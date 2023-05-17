@@ -1,12 +1,14 @@
 import os
+import time
 import gdown
-from zipfile import ZipFile
+import shutil
+import zipfile
 from collections import OrderedDict
-from datasets.ascad_v2 import ASCADV2
+from datasets.ascad import ASCADV1Fixed, ASCADV1Variable, ASCADV2
 
 AVAILABLE_DATASETS = OrderedDict([
     (dataset_class.dataset_name, dataset_class)
-    for dataset_class in [ASCADV2]
+    for dataset_class in [ASCADV1Fixed, ASCADV1Variable]
 ])
 
 def get_available_datasets():
@@ -15,6 +17,19 @@ def get_available_datasets():
 def download_file(url, dest, force=False):
     if force or not(os.path.exists(dest)):
         gdown.download(url, dest, quiet=False)
+
+def unzip_file(src, dest, member=None, remove=True):
+    try:
+        with zipfile.ZipFile(src, 'r') as zip_ref:
+            if member is None:
+                zip_ref.extractall(path=dest)
+            else:
+                zip_ref.extract(member, path=dest)
+        if remove:
+            os.remove(src)
+    except zipfile.BadZipFile:
+        time.sleep(10)
+        unzip_file(src, member=member, remove=remove)
 
 def check_name(dataset_name):
     if not dataset_name in get_available_datasets():
@@ -43,7 +58,16 @@ def download_dataset(dataset_name, force=False):
             os.remove(os.path.join(dataset_path, 'done.txt'))
     else:
         os.makedirs(dataset_path, exist_ok=True)
-    download_file(dataset_class.download_url, os.path.join(dataset_path, dataset_class.compressed_filename), force=True)
+    if dataset_class.download_url.split('.')[-1] == 'zip':
+        dl_path = os.path.join(dataset_path, os.path.split(dataset_class.download_url)[-1])
+        download_file(dataset_class.download_url, dl_path, force=True)
+        unzip_file(dl_path, dataset_path, member=dataset_class.member_to_unzip, remove=True)
+        os.rename(
+            os.path.join(dataset_path, dataset_class.member_to_unzip), os.path.join(dataset_path, dataset_class.compressed_filename)
+        )
+        shutil.rmtree(os.path.join(dataset_path, dataset_class.member_to_unzip.split(os.sep)[0]))
+    else:
+        download_file(dataset_class.download_url, os.path.join(dataset_path, dataset_class.compressed_filename), force=True)
     if hasattr(dataset_class, 'extract_dataset'):
         dataset_class.extract_dataset()
     open(os.path.join(dataset_path, 'done.txt'), 'w').close()
