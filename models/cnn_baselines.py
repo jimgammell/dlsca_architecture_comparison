@@ -106,3 +106,47 @@ class WoutersNet(nn.Module):
         x = self.pre_head(x)
         x = {head_name: head(x) for head_name, head in self.heads.items()}
         return x
+
+class KimNet(nn.Module):
+    def __init__(self, input_shape, head_sizes, dropout_rate=0.5):
+        super().__init__()
+        
+        class VGGBlock(nn.Module):
+            def __init__(self, in_channels, out_channels):
+                super().__init__()
+                
+                self.block = nn.Sequential(
+                    nn.Conv1d(in_channels, out_channels, kernel_size=3, padding=1, stride=1, bias=False),
+                    nn.BatchNorm1d(2*channels),
+                    nn.ReLU(),
+                    nn.MaxPool1d(2)
+                )
+            
+            def forward(self, x):
+                return self.block(x)
+        
+        self.feature_extractor = nn.Sequential(
+            VGGBlock(input_shape[0], 8),
+            VGGBlock(8, 16),
+            VGGBlock(16, 32),
+            VGGBlock(32, 64),
+            VGGBlock(64, 128),
+            VGGBlock(128, 256),
+            VGGBlock(256, 256),
+            nn.AdaptiveAvgPool1d(1),
+            nn.Flatten()
+        )
+        self.pre_head = nn.Sequential(
+            nn.Linear(256, 256),
+            nn.Dropout(dropout_rate)
+        )
+        self.heads = nn.ModuleDict({
+            head_key: nn.Linear(256, head_size) for head_key, head_size in head_sizes.items()
+        })
+        
+    def forward(self, x):
+        x = self.feature_extractor(x)
+        x = self.pre_head(x)
+        x = {head_name: head(x) for x in self.heads.items()}
+        return x
+        

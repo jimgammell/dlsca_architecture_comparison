@@ -33,6 +33,7 @@ class ClassifierTrainer:
         update_bn_steps=100,
         val_split_size=5000,
         n_test_traces=1000,
+        final_evaluation_repetitions=10,
         selection_metric=None,
         maximize_selection_metric=True,
         training_set_truncate_length=None, # Number of training datapoints to include,
@@ -60,6 +61,7 @@ class ClassifierTrainer:
         self.gaussian_input_noise_stdev = gaussian_input_noise_stdev
         self.batch_size = batch_size
         self.n_test_traces = n_test_traces
+        self.final_evaluation_repetitions = final_evaluation_repetitions
         self.selection_metric = selection_metric
         self.maximize_selection_metric = maximize_selection_metric
         
@@ -205,30 +207,36 @@ class ClassifierTrainer:
                 break
         predictions, metadata = {key: val[:truncate_at_sample] for key, val in predictions.items()}, metadata[:truncate_at_sample]
         
-        # Compute the rank over time of the real key, based on the code in the ASCAD repository:
-        #   https://github.com/ANSSI-FR/ASCAD/blob/master/ASCAD_test_models.py
-        real_key_ranks = {pkey: [] for pkey in predictions.keys()}
+        # Compute the rank over time of the real key, based on the code here:
+        #   https://github.com/gabzai/Methodology-for-efficient-CNN-architectures-in-SCA/blob/master/ASCAD/N0%3D100/exploit_pred.py
+        def rank_key(rank_array, key):
+            key_val = rank_array[key]
+            return np.where(np.sort(rank_array)[::-1] == key_val)[0][0]
+        
+        def rank_compute(predictions, metadata, target_byte):
+            n_traces, n_hypotheses = len(predictions), len(predictions[0])
+            key_log_prob = np.zeros(n_hypotheses)
+            rank_evol = np.full(n_traces, 255)
+            for tidx in range(n_traces):
+                plaintext = metadata[tidx]['plaintext'][target_byte]
+                key = metadata[tidx]['key'][target_byte]
+                for hidx in range(n_hypotheses):
+                    key_log_prob[hidx] += predictions[tidx][self.test_dataset.sbox[hidx ^ plaintext]]
+                rank_evol[tidx] = rank_key(key_log_prob, key)
+            return rank_evol
+        
+        ranks = {}
         for pkey, pval in predictions.items():
             target_byte = np.uint8(pkey.split('_')[-1])
-            key_bytes_proba = np.zeros(256)
-            for sidx in range(truncate_at_sample):
-                plaintext = metadata[sidx]['plaintext'][target_byte]
-                key = metadata[sidx]['key'][target_byte]
-                proba = np.zeros(256)
-                for i in range(256):
-                    proba[i] = pval[sidx][self.test_dataset.sbox[plaintext ^ key ^ i]]
-                proba[~np.isfinite(proba)] = 2*np.min(proba[np.isfinite(proba)])
-                key_bytes_proba += proba
-                sorted_proba = np.array(list(map(lambda a: key_bytes_proba[a], key_bytes_proba.argsort()[::-1])))
-                real_key_rank = np.where(sorted_proba == key_bytes_proba[key])[0][0]
-                real_key_ranks[pkey].append(real_key_rank)
+            ranks[pkey] = rank_compute(pval, metadata, target_byte)
+        
         rv = {}
         if return_full_trace:
-            rv.update({'full_trace__'+pkey: np.array(real_key_ranks[pkey]) for pkey in predictions.keys()})
+            rv.update({'full_trace__'+pkey: np.array(ranks[pkey]) for pkey in predictions.keys()})
             rv.update({'full_trace': np.mean(np.stack([val for key, val in rv.items() if 'full_trace__' in key], axis=0), axis=0)})
-        rv.update({'mean_rank__'+pkey: np.mean(real_key_ranks[pkey]) for pkey in predictions.keys()})
+        rv.update({'mean_rank__'+pkey: np.mean(ranks[pkey]) for pkey in predictions.keys()})
         rv.update({'mean_rank': np.mean([val for key, val in rv.items() if 'mean_rank__' in key])})
-        rv.update({'final_rank__'+pkey: real_key_ranks[pkey][-1] for pkey in predictions.keys()})
+        rv.update({'final_rank__'+pkey: ranks[pkey][-1] for pkey in predictions.keys()})
         rv.update({'final_rank': np.mean([val for key, val in rv.items() if 'final_rank__' in key])})
         return rv
     
@@ -297,7 +305,12 @@ class ClassifierTrainer:
                     print(' ({} -- {})'.format(min(vals), max(vals)))
                 else:
                     print()
-        test_final_rv.update(self.evaluate_model(truncate_at_sample=self.n_test_traces, return_full_trace=True))
+        for repetition in range(self.final_evaluation_repetitions):
+            rv = self.evaluate_model(truncate_at_sample=self.n_test_traces, return_full_trace=True)
+            for key, val in rv.items():
+                if not key in test_final_rv.keys():
+                    test_final_rv[key] = []
+                test_final_rv[key].append(val)
         
         if results_save_dir is not None:
             os.makedirs(os.path.join(results_save_dir, 'intermediate_results'), exist_ok=True)
@@ -355,9 +368,12 @@ class ClassifierTrainer:
             
             # plot rank of correct key as we add traces
             (fig, axes) = plt.subplots(1, 2, figsize=(12, 6))
-            samples = np.arange(len(test_final_rv['full_trace']))
-            axes[0].plot(samples, test_final_rv['full_trace'], '-', color='blue')
-            axes[1].plot(samples, stack(test_final_rv, 'full_trace'), '.', color='blue')
+            samples = np.arange(len(test_final_rv['full_trace'][0]))
+            for trace in test_final_rv['full_trace']:
+                axes[0].plot(samples, trace, '-', color='blue')
+            for val in [val for key, val in test_final_rv.items() if 'full_trace__' in key]:
+                for trace in val:
+                    axes[1].plot(samples, trace, '.', color='blue')
             axes[0].set_title('Average over bytes')
             axes[1].set_title('Per-byte')
             for ax in axes.flatten():
