@@ -1,0 +1,21 @@
+{
+    "save_dir": "wouters_simplified",
+    "model_name": "WoutersNet",
+    "model_kwargs": {"simplify_kernel": false},
+    "loss_fn_class": "CrossEntropyLoss",
+    "optimizer_class": "Adam",
+    "optimizer_kwargs": {"lr": 5e-3},
+    "scheduler_class": "OneCycleLR",
+    "scheduler_kwargs": {
+        "max_lr": 5e-3, "three_phase": true, "pct_start": 0.4, "final_div_factor": 1e3,
+        "div_factor": 10.0, "cycle_momentum": false, "anneal_strategy": "linear"
+    },
+    "autotune_lr": false,
+    "batch_size": 50,
+    "update_bn_steps": 0.0,
+    "val_split_size": 5000,
+    "data_bytes": [2],
+    "data_repr": "bytes",
+    "total_epochs": 50,
+    "selection_metric": null
+}

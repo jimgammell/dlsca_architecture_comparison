@@ -1,10 +1,10 @@
 from collections import OrderedDict
 
-from models import cnn, baselines
+from models.cnn_baselines import ProuffCnn, WoutersNet
 
 AVAILABLE_MODELS = OrderedDict([
     (model_class.model_name, model_class)
-    for model_class in [cnn.ResNet, baselines.AscadCNN]
+    for model_class in [ProuffCnn, WoutersNet]
 ])
 
 def get_available_models():

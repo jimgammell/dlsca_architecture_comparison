@@ -52,6 +52,7 @@ class _ASCADBase(torch.utils.data.Dataset):
         self.database_file = h5py.File(
             os.path.join(datasets.get_path(dataset_name), compressed_filename), 'r'
         )
+        self.sbox = AES_Sbox
         
         assert len(self.database_file['Profiling_traces/traces']) == len(self.database_file['Profiling_traces/labels']) == len(self.database_file['Profiling_traces/metadata'])
         assert len(self.database_file['Attack_traces/traces']) == len(self.database_file['Attack_traces/labels']) == len(self.database_file['Attack_traces/metadata'])
@@ -84,7 +85,7 @@ class _ASCADBase(torch.utils.data.Dataset):
                 'masks': np.array(self.index_database('metadata')['masks'][idx], dtype=np.uint8)
             }
     
-    def __getitem__(self, idx):
+    def __getitem__(self, idx, return_metadata=False):
         idx = idx % self.length
         data = self.get_data(idx)
         orig_target = self.get_target(idx)
@@ -92,14 +93,18 @@ class _ASCADBase(torch.utils.data.Dataset):
         target = self.compute_target(metadata)
         to_repr = {'bytes': to_byte, 'bits': to_bits, 'hw': to_hw}[self.data_repr]
         assert target[self.data_repr+'_2'] == to_repr(orig_target)
-        data = (data - self.trace_range[0]) / (self.trace_range[1]-self.trace_range[0])
+        #data = (data - self.trace_range[0]) / (self.trace_range[1]-self.trace_range[0])
+        data = (data-np.mean(data))/np.std(data)
         data = torch.tensor(data, dtype=torch.float).view(*self.data_shape)
         target = {key: torch.tensor(value, dtype=torch.long).squeeze() for key, value in target.items()}
         if self.transform is not None:
             data = self.transform(data)
         if self.target_transform is not None:
             target = self.target_transform(target)
-        return data, target
+        if return_metadata:
+            return data, target, metadata
+        else:
+            return data, target
     
     def __len__(self):
         return self.length

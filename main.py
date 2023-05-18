@@ -22,19 +22,17 @@ def download_dataset(dataset_args, force=False):
         datasets.download_dataset(dataset_name, force=force)
         print('\tDone. Time taken: {} sec.'.format(time.time()-t0))
 
-def train_classifier(dataset_names, model_name_):
-    for dataset_name in dataset_names:
-        for model_name in ['ASCAD-CNN', 'ResNet']:
-            for l1_weight_penalty in [1e-7, 1e-5, 1e-3, 1e-1, 1e1]: #weight_decay in [1e-5, 1e-3, 1e-1]:
-                try:
-                    print('Training model with weight decay {}...'.format(l1_weight_penalty))
-                    save_dir = config.results_subdir('test', 'weight_decay_sweep', 'value_%e__model_%s'%(l1_weight_penalty, model_name))
-                    trainer = train.classifier.ClassifierTrainer(dataset_name, model_name, l1_weight_penalty=l1_weight_penalty)
-                    #trainer.optimizer_kwargs['weight_decay'] = weight_decay
-                    trainer.train_model(100, results_save_dir=save_dir)
-                    print()
-                except:
-                    pass
+def train_classifier(dataset_args, settings, seed=None, device=None):
+    def run_(seed_):
+        save_dir = config.results_subdir(settings['save_dir'], dataset_name, *(['seed_%d'%(seed_)] if seed_ is not None else []))
+        trainer = train.classifier.ClassifierTrainer(dataset_name, seed=seed_, device=device, **settings)
+        trainer.train_model(settings['total_epochs'], results_save_dir=save_dir, compute_max_lr=settings['autotune_lr'])
+    for dataset_name in dataset_args:
+        if len(seed) == 0:
+            run_(None)
+        else:
+            for seed_ in seed:
+                run_(seed_)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -46,20 +44,25 @@ def main():
         help='Dataset to use for this trial. Valid options: \'{}\'. Pass \'all\' to download all valid options.'.format('\', \''.join(datasets.get_available_datasets()))
     )
     parser.add_argument(
-        '--architecture', choices=models.get_available_models(), default=models.get_available_models()[0],
-        help='Model architecture to use for this trial. Valid options: \'{}\'.'.format('\', \''.join(models.get_available_models()))
-    )
-    parser.add_argument(
         '--download', default=False, action='store_true',
         help='Download the specified datasets.'
     )
     parser.add_argument(
-        '--train-classifier', default=False, action='store_true',
-        help='Train the specified combinations of datasets and models.'
+        '--train-classifier', choices=config.get_available_configs(), nargs='+', default=[],
+        help='Classifiers to train, as defined in the respective config files.'
     )
     parser.add_argument(
         '-f', '--force', default=False, action='store_true',
         help='Force the command to take effect.'
+    )
+    parser.add_argument(
+        '--seed', default=[], type=int, nargs='+', help='Random seed to use in this trial.'
+    )
+    parser.add_argument(
+        '--device', default=None, help='Device to use for this trial.'
+    )
+    parser.add_argument(
+        '--num-epochs', default=None, type=int, help='Number of epochs to train for. Overrides the value specified in the trial configuration file.'
     )
     args = parser.parse_args()
     
@@ -68,8 +71,11 @@ def main():
         download_dataset(args.dataset, force=args.force)
     if args.run_tests:
         datasets.test.test_datasets()
-    if args.train_classifier:
-        train_classifier(args.dataset, args.architecture)
+    for config_name in args.train_classifier:
+        settings = config.load_config(config_name)
+        if args.num_epochs is not None:
+            settings['total_epochs'] = args.num_epochs
+        train_classifier(args.dataset, settings, seed=args.seed, device=args.device)
 
 if __name__ == '__main__':
     main()
