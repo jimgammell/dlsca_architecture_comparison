@@ -1,5 +1,5 @@
 {
-    "save_dir": "wouters_simplified",
+    "save_dir": "wouters_simplified__byte_2",
     "model_name": "WoutersNet",
     "model_kwargs": {"simplify_kernel": false, "precise_bn": false},
     "loss_fn_class": "CrossEntropyLoss",
@@ -13,7 +13,7 @@
     "batch_size": 64,
     "update_bn_steps": 0.0,
     "val_split_size": 5000,
-    "data_bytes": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    "data_bytes": [2],
     "data_repr": "bytes",
     "total_epochs": 50,
     "selection_metric": "rank"

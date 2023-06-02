@@ -3,6 +3,7 @@ import os
 import time
 import pickle
 import numpy as np
+from scipy.special import softmax
 from matplotlib import pyplot as plt
 import torch
 from torch import nn, optim
@@ -23,6 +24,8 @@ class ClassifierTrainer:
         optimizer_kwargs={'lr': 1e-3, 'momentum': 0.9, 'nesterov': True, 'weight_decay': 0.0},
         l1_weight_penalty=0.0,
         gaussian_input_noise_stdev=0.0,
+        mixup_alpha=0.0,
+        label_smoothing=False,
         loss_fn_class=nn.CrossEntropyLoss,
         loss_fn_kwargs={},
         scheduler_class=optim.lr_scheduler.OneCycleLR,
@@ -32,8 +35,8 @@ class ClassifierTrainer:
         batch_size=64,
         update_bn_steps=100,
         val_split_size=5000,
-        n_test_traces=1000,
-        final_evaluation_repetitions=10,
+        n_test_traces=128,
+        final_evaluation_repetitions=100,
         selection_metric=None,
         maximize_selection_metric=True,
         training_set_truncate_length=None, # Number of training datapoints to include,
@@ -64,6 +67,8 @@ class ClassifierTrainer:
         self.final_evaluation_repetitions = final_evaluation_repetitions
         self.selection_metric = selection_metric
         self.maximize_selection_metric = maximize_selection_metric
+        self.mixup_alpha = mixup_alpha
+        self.label_smoothing = label_smoothing
         
         dataset_class = datasets.get_class(dataset_name)
         train_dataset = dataset_class(train=True, truncate_length=training_set_truncate_length, bytes=data_bytes, data_repr=data_repr)
@@ -79,7 +84,8 @@ class ClassifierTrainer:
         self.batch_size = batch_size
         self.get_train_dataloader = lambda: train.get_dataloader(train_dataset, shuffle=True, batch_size=self.batch_size)
         self.get_val_dataloader = lambda: train.get_dataloader(val_dataset, shuffle=False, batch_size=batch_size)
-        self.get_test_dataloader = lambda: train.get_dataloader(test_dataset, shuffle=False, batch_size=batch_size)
+        self.get_test_dataloader = lambda: train.get_dataloader(test_dataset, shuffle=True, batch_size=batch_size)
+        #   Shuffling test dataloader so it's easier to do the final evaluation with different subsets of traces
         
         model_class = models.get_class(model_name)
         head_size = {'bytes': 256, 'bits': 8, 'hw': 9}[test_dataset.data_repr]
@@ -118,6 +124,13 @@ class ClassifierTrainer:
         traces, labels = train.unpack_batch(batch, self.device)
         if self.gaussian_input_noise_stdev > 0:
             traces += self.gaussian_input_noise_stdev * torch.randn_like(traces)
+        if self.mixup_alpha > 0:
+            indices = torch.randperm(traces.size(0), device=self.device, dtype=torch.long)
+            mu_lambda = np.random.beta(self.mixup_alpha, self.mixup_alpha)
+            traces = mu_lambda*traces + (1-mu_lambda)*traces[indices]
+            labels = {key: mu_lambda*labels[key] + (1-mu_lambda)*labels[key][indices] for key in labels.keys()}
+        if self.label_smoothing:
+            labels = {key: 0.9*val + 0.1*torch.ones_like(val)/(val.size(-1)-1) for key, val in labels.items()}
         logits = self.model(traces)
         total_loss = 0.0
         for hidx, (head_name, head_logits) in enumerate(logits.items()):
@@ -187,56 +200,70 @@ class ClassifierTrainer:
         self.model.eval()
         random_indices = np.arange(len(self.test_dataset))
         np.random.shuffle(random_indices)
-        predictions, metadata = None, []
-        for bidx in range(len(self.test_dataset)//self.batch_size):
-            examples = []
-            for idx in range(bidx*self.batch_size, (bidx+1)*self.batch_size):
-                example, _, _metadata = self.test_dataset.__getitem__(random_indices[idx], return_metadata=True)
-                examples.append(example)
-                metadata.append(_metadata)
-            batched_examples = torch.stack(examples).to(self.device)
-            batch_logits = self.model(batched_examples)
-            batch_predictions = {key: nn.functional.log_softmax(val, dim=-1) for key, val in batch_logits.items()}
-            batch_predictions = {key: [row for row in val.cpu().numpy()] for key, val in batch_predictions.items()}
-            if predictions is None:
-                predictions = batch_predictions
-            else:
-                for key in predictions.keys():
-                    predictions[key].extend(batch_predictions[key])
-            if bidx*self.batch_size > truncate_at_sample:
+        self.test_dataset.return_metadata = True
+        logits, metadata = [], []
+        for batch in self.test_dataloader:
+            traces, _, metadata_ = batch
+            traces = traces.to(self.device)
+            logits_ = self.model(traces)
+            logits_ = {key: val.cpu().numpy() for key, val in logits_.items()}
+            logits.append(logits_)
+            metadata.append(metadata_)
+            if truncate_at_sample is not None and self.batch_size*len(logits) >= truncate_at_sample:
                 break
-        predictions, metadata = {key: val[:truncate_at_sample] for key, val in predictions.items()}, metadata[:truncate_at_sample]
+        logits = {key: np.concatenate([val[key] for val in logits], axis=0) for key in logits[0].keys()}
+        plaintexts = np.concatenate([val['plaintext'] for val in metadata], axis=0)
+        aes_keys = np.concatenate([val['key'] for val in metadata], axis=0)
+        if truncate_at_sample is not None:
+            logits = {key: val[:truncate_at_sample] for key, val in logits.items()}
+            plaintexts = plaintexts[:truncate_at_sample]
+            aes_keys = aes_keys[:truncate_at_sample]
+        self.test_dataset.return_metadata = False
         
-        # Compute the rank over time of the real key, based on the code here:
-        #   https://github.com/gabzai/Methodology-for-efficient-CNN-architectures-in-SCA/blob/master/ASCAD/N0%3D100/exploit_pred.py
-        def rank_key(rank_array, key):
-            key_val = rank_array[key]
-            return np.where(np.sort(rank_array)[::-1] == key_val)[0][0]
-        
-        def rank_compute(predictions, metadata, target_byte):
-            n_traces, n_hypotheses = len(predictions), len(predictions[0])
-            key_log_prob = np.zeros(n_hypotheses)
-            rank_evol = np.full(n_traces, 255)
-            for tidx in range(n_traces):
-                plaintext = metadata[tidx]['plaintext'][target_byte]
-                key = metadata[tidx]['key'][target_byte]
-                for hidx in range(n_hypotheses):
-                    key_log_prob[hidx] += predictions[tidx][self.test_dataset.sbox[hidx ^ plaintext]]
-                rank_evol[tidx] = rank_key(key_log_prob, key)
-            return rank_evol
-        
-        ranks = {}
-        for pkey, pval in predictions.items():
-            target_byte = np.uint8(pkey.split('_')[-1])
-            ranks[pkey] = rank_compute(pval, metadata, target_byte)
+        # Compute the rank over time, based on https://github.com/suvadeep-iitb/TransNet/blob/master/evaluation_utils_ascad.py
+        def get_log_prob(predictions, plaintext):
+            predictions = np.squeeze(predictions)
+            n_classes = predictions.shape[0]
+            keys = np.arange(n_classes, dtype=int)
+            x_xor_k = np.bitwise_xor(keys, plaintext)
+            z = np.take(self.test_dataset.sbox, x_xor_k)
+            log_prob = np.take(predictions, z)
+            return log_prob
         
         rv = {}
+        for key in logits.keys():
+            predictions = logits[key]
+            target_byte = int(key.split('_')[-1])
+            plaintexts_k = plaintexts[:, target_byte]
+            aes_keys_k = aes_keys[:, target_byte]
+            
+            n_samples, n_classes = predictions.shape
+            predictions = softmax(predictions, axis=-1)
+            predictions = np.log(predictions + 1e-40)
+            cum_log_prob = np.zeros((n_samples, n_classes))
+            last_log_prob = np.zeros((1, n_classes))
+            for sidx in range(n_samples):
+                log_prob = get_log_prob(predictions[sidx, :], plaintexts_k[sidx])
+                last_log_prob += log_prob
+                cum_log_prob[sidx, :] = last_log_prob
+            
+            sorted_keys = np.argsort(-cum_log_prob, axis=1)
+            key_ranks = np.zeros((n_samples,), dtype=int) - 1
+            for sidx in range(n_samples):
+                for cidx in range(n_classes):
+                    if sorted_keys[sidx, cidx] == aes_keys_k[sidx]:
+                        key_ranks[sidx] = cidx
+                        break
+            
+            if return_full_trace:
+                rv.update({'full_trace__'+key: key_ranks})
+            rv.update({'mean_rank__'+key: np.mean(key_ranks)})
+            rv.update({'final_rank__'+key: key_ranks[-1]})
         if return_full_trace:
-            rv.update({'full_trace__'+pkey: np.array(ranks[pkey]) for pkey in predictions.keys()})
-            rv.update({'full_trace': np.mean(np.stack([val for key, val in rv.items() if 'full_trace__' in key], axis=0), axis=0)})
-        rv.update({'mean_rank__'+pkey: np.mean(ranks[pkey]) for pkey in predictions.keys()})
+            rv.update({
+                'full_trace': np.mean(np.stack([val for key, val in rv.items() if 'full_trace__' in key]), axis=0)
+            })
         rv.update({'mean_rank': np.mean([val for key, val in rv.items() if 'mean_rank__' in key])})
-        rv.update({'final_rank__'+pkey: ranks[pkey][-1] for pkey in predictions.keys()})
         rv.update({'final_rank': np.mean([val for key, val in rv.items() if 'final_rank__' in key])})
         return rv
     
@@ -266,7 +293,8 @@ class ClassifierTrainer:
             self.update_bn_stats(self.train_dataloader)
             val_brv = self.eval_epoch(self.val_dataloader)
             val_rv.update(val_brv)
-            test_brv = self.evaluate_model(truncate_at_sample=self.n_test_traces)
+            test_brv = [self.evaluate_model(truncate_at_sample=self.n_test_traces) for _ in range(self.final_evaluation_repetitions)]
+            test_brv = {key: np.mean([val[key] for val in test_brv]) for key in test_brv[0].keys()}
             test_rv.update(test_brv)
             if self.selection_metric is not None:
                 metric = val_brv[self.selection_metric]
@@ -369,11 +397,11 @@ class ClassifierTrainer:
             # plot rank of correct key as we add traces
             (fig, axes) = plt.subplots(1, 2, figsize=(12, 6))
             samples = np.arange(len(test_final_rv['full_trace'][0]))
-            for trace in test_final_rv['full_trace']:
-                axes[0].plot(samples, trace, '-', color='blue')
+            mean_final_trace = np.mean(np.stack(test_final_rv['full_trace']), axis=0)
+            axes[0].plot(samples, mean_final_trace, '-', color='blue')
             for val in [val for key, val in test_final_rv.items() if 'full_trace__' in key]:
-                for trace in val:
-                    axes[1].plot(samples, trace, '.', color='blue')
+                mean_final_trace_k = np.mean(np.stack(val), axis=0)
+                axes[1].plot(samples, mean_final_trace_k, '.', color='blue')
             axes[0].set_title('Average over bytes')
             axes[1].set_title('Per-byte')
             for ax in axes.flatten():

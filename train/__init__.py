@@ -5,7 +5,6 @@ import torch
 from torch import nn
 
 import datasets
-from models import cnn
 
 class ResultsDict(dict):
     def append(self, key, value):
@@ -37,6 +36,7 @@ def value(x):
 def unpack_batch(batch, device):
     x, y = batch
     x, y = x.to(device), {key: value.to(device) for key, value in y.items()}
+    y = {key: nn.functional.one_hot(value, num_classes=256).to(torch.float) for key, value in y.items()}
     return x, y
 
 def get_dataloader(dataset, batch_size=32, shuffle=False):
@@ -50,12 +50,17 @@ def get_acc(logits, labels):
     if isinstance(labels, torch.Tensor):
         labels = value(labels)
     predictions = np.argmax(logits, axis=-1)
+    if labels.ndim > 1:
+        labels = np.argmax(labels, axis=-1)
     acc = np.mean(np.equal(predictions, labels))
     return acc
 
 def get_soft_acc(logits, labels):
     predicted_dist = nn.functional.softmax(logits, dim=-1)
-    soft_acc = predicted_dist[torch.arange(len(predicted_dist)), labels].mean() # get prediction[label] for each batch
+    if labels.ndim > 1:
+        soft_acc = (labels*predicted_dist).sum(dim=-1).mean()
+    else:
+        soft_acc = predicted_dist[torch.arange(len(predicted_dist)), labels].mean() # get prediction[label] for each batch
     return value(soft_acc)
 
 def get_rank(logits, labels):
@@ -63,6 +68,8 @@ def get_rank(logits, labels):
         logits = value(logits)
     if isinstance(labels, torch.Tensor):
         labels = value(labels)
+    if labels.ndim > 1:
+        labels = np.argmax(labels, axis=-1)
     rank = (-logits).argsort(axis=-1).argsort(axis=-1)
     correct_rank = rank[np.arange(len(rank)), labels].mean()
     return correct_rank
@@ -84,7 +91,7 @@ def get_norms(model):
 def run_epoch(dataloader, step_fn, *step_args, truncate_steps=None, average_batches=True, **step_kwargs):
     rv = ResultsDict()
     if truncate_steps is not None:
-        assert 0 <= truncate_steps < len(dataloader)
+        assert 0 <= truncate_steps <= len(dataloader)
     for bidx, batch in enumerate(dataloader):
         step_rv = step_fn(batch, *step_args, **step_kwargs)
         rv.update(step_rv)

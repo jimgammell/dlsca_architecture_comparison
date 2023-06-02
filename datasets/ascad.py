@@ -53,6 +53,7 @@ class _ASCADBase(torch.utils.data.Dataset):
             os.path.join(datasets.get_path(dataset_name), compressed_filename), 'r'
         )
         self.sbox = AES_Sbox
+        self.return_metadata = False
         
         assert len(self.database_file['Profiling_traces/traces']) == len(self.database_file['Profiling_traces/labels']) == len(self.database_file['Profiling_traces/metadata'])
         assert len(self.database_file['Attack_traces/traces']) == len(self.database_file['Attack_traces/labels']) == len(self.database_file['Attack_traces/metadata'])
@@ -85,7 +86,7 @@ class _ASCADBase(torch.utils.data.Dataset):
                 'masks': np.array(self.index_database('metadata')['masks'][idx], dtype=np.uint8)
             }
     
-    def __getitem__(self, idx, return_metadata=False):
+    def __getitem__(self, idx):
         idx = idx % self.length
         data = self.get_data(idx)
         orig_target = self.get_target(idx)
@@ -101,7 +102,7 @@ class _ASCADBase(torch.utils.data.Dataset):
             data = self.transform(data)
         if self.target_transform is not None:
             target = self.target_transform(target)
-        if return_metadata:
+        if self.return_metadata:
             return data, target, metadata
         else:
             return data, target

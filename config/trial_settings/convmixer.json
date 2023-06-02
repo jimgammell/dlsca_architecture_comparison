@@ -1,0 +1,24 @@
+{
+    "save_dir": "convmixer",
+    "model_name": "ConvMixer",
+    "model_kwargs": {
+        "depth": 8,
+        "patch_length": 50,
+        "spatial_kernel_size": 3,
+        "hidden_channels": 256
+    },
+    "loss_fn_class": "CrossEntropyLoss",
+    "optimizer_class": "AdamW",
+    "scheduler_class": null,
+    "autotune_lr": false,
+    "batch_size": 32,
+    "update_bn_steps": 0,
+    "val_split_size": 5000,
+    "data_bytes": [2],
+    "data_repr": "bytes",
+    "total_epochs": 10,
+    "mixup_alpha": 0.0,
+    "gaussian_input_noise_stdev": 0.0,
+    "label_smoothing": false,
+    "selection_metric": "rank"
+}

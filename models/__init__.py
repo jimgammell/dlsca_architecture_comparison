@@ -1,10 +1,12 @@
 from collections import OrderedDict
 
+from models.resnet import ResNet
 from models.cnn_baselines import ProuffCnn, WoutersNet
+from models.convmixer import ConvMixer
 
 AVAILABLE_MODELS = OrderedDict([
     (model_class.model_name, model_class)
-    for model_class in [ProuffCnn, WoutersNet]
+    for model_class in [ProuffCnn, WoutersNet, ResNet, ConvMixer]
 ])
 
 def get_available_models():
