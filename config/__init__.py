@@ -45,15 +45,14 @@ def get_device(device=None):
         return device
 
 def denest_dict(d, delim='-'):
-    if any(delim in key for k in d.keys()):
+    if any(delim in key for key in d.keys()):
         raise Exception('Delimiter character \'{}\' is used in one or more dictionary keys: \'{}\''.format(
             delim, '\', \''.join(list(d.keys()))))
-    while any(type(val) == dict for val in d.values()):
-        for key, val in copy.deepcopy(d).items():
-            if type(val) == dict:
-                for subkey, subval in val.items():
-                    d[delim.join((key, subkey))] = subval
-                del d[key]
+    for key, val in copy.deepcopy(d).items():
+        if type(val) == dict:
+            for subkey, subval in val.items():
+                d[delim.join((key, subkey))] = subval
+            del d[key]
     return d
 
 def nest_dict(d, delim='-'):
@@ -62,7 +61,7 @@ def nest_dict(d, delim='-'):
             if delim in key:
                 outer_key, inner_key = key.split(delim, maxsplit=1)
                 if not outer_key in d.keys():
-                    d[outer_key] = []
+                    d[outer_key] = {}
                 d[outer_key][inner_key] = val
                 del d[key]
     return d

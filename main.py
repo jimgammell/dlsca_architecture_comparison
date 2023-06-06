@@ -5,6 +5,7 @@ import copy
 import pickle
 import os
 import traceback
+from torch import multiprocessing
 
 import datasets, datasets.test
 import train, train.classifier
@@ -44,7 +45,7 @@ def htune_classifier(dataset_args, settings, seed=None, device=None, num_agents=
     dataset_name = dataset_args[0]
     seed = seed[0]
     wandb_config = settings['wandb_config']
-    wandb_config = config.denest_dict(wandb_config)
+    wandb_config['parameters'] = config.denest_dict(wandb_config['parameters'])
     classifier_settings = {key: val for key, val in settings.items() if key != 'wandb_config'}
     sweep_id = wandb.sweep(
         sweep=wandb_config,
@@ -52,20 +53,22 @@ def htune_classifier(dataset_args, settings, seed=None, device=None, num_agents=
     )
     
     def run_wandb_trial_():
-        wandb.init(mode='offline')
-        trial_settings = copy.deepcopy(classifier_settings)
-        trial_settings = config.nest_dict(trial_settings)
-        save_dir = config.results_subdir(settings['save_dir'], dataset_name)
-        if len(os.listdir(save_dir)) > 0:
-            save_dir = os.path.join(save_dir, 'trial_%d'%(max(int(f.split('_')[-1]) for f in os.listdir(save_dir))+1))
-        else:
-            save_dir = os.path.join(save_dir, 'trial_0')
         try:
+            wandb.init()
+            trial_settings = copy.deepcopy(classifier_settings)
+            wandb_config = dict(wandb.config)
+            wandb_config = config.nest_dict(wandb_config)
+            trial_settings.update(wandb_config)
+            save_dir = config.results_subdir(settings['save_dir'], dataset_name)
+            if len(os.listdir(save_dir)) > 0:
+                save_dir = os.path.join(save_dir, 'trial_%d'%(max(int(f.split('_')[-1]) for f in os.listdir(save_dir))+1))
+            else:
+                save_dir = os.path.join(save_dir, 'trial_0')
             trainer = train.classifier.ClassifierTrainer(dataset_name, seed=seed, device=device, **trial_settings)
+            trainer.train_model(settings['total_epochs'], results_save_dir=save_dir, compute_max_lr=False, generate_plots=False, report_to_wandb=True)
         except Exception:
             traceback.print_exc()
             raise Exception('Trial code crashed.')
-        trainer.train_model(settings['total_epochs'], results_save_dir=save_dir, compute_max_lr=False, generate_plots=False, report_to_wandb=True)
     
     def spawn_agent():
         wandb.agent(sweep_id, function=run_wandb_trial_)
@@ -74,6 +77,7 @@ def htune_classifier(dataset_args, settings, seed=None, device=None, num_agents=
         procs = []
         for _ in range(num_agents):
             p = multiprocessing.Process(target=spawn_agent)
+            procs.append(p)
             p.start()
         for p in procs:
             p.join()

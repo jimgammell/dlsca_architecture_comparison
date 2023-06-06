@@ -33,11 +33,11 @@
                 "max_lr": {"distribution": "log_uniform_values", "min": 1e-8, "max": 1e0}
             },
             "model_kwargs": {
-                "patch_length": [11, 21, 31],
-                "spatial_kernel_size": [11, 21, 31],
-                "norm_constructor": ["BatchNorm1d", null],
-                "spatial_skip_conn": [true, false],
-                "channel_skip_conn": [true, false]
+                "patch_length": {"values": [11, 21, 31]},
+                "spatial_kernel_size": {"values": [11, 21, 31]},
+                "norm_constructor": {"values": ["BatchNorm1d", null]},
+                "spatial_skip_conn": {"values": [true, false]},
+                "channel_skip_conn": {"values": [true, false]}
             }
         }
     }
