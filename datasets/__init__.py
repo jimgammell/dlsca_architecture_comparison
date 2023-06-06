@@ -4,11 +4,11 @@ import gdown
 import shutil
 import zipfile
 from collections import OrderedDict
-from datasets.ascad import ASCADV1Fixed, ASCADV1Variable, ASCADV2
+from datasets.ascad import ASCADV1Fixed, ASCADV1Fixed_DS50, ASCADV1Fixed_DS100, ASCADV1Variable, ASCADV2
 
 AVAILABLE_DATASETS = OrderedDict([
     (dataset_class.dataset_name, dataset_class)
-    for dataset_class in [ASCADV1Fixed, ASCADV1Variable]
+    for dataset_class in [ASCADV1Fixed, ASCADV1Fixed_DS50, ASCADV1Fixed_DS100, ASCADV1Variable]
 ])
 
 def get_available_datasets():

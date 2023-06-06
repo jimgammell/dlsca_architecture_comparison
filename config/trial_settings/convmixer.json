@@ -2,23 +2,27 @@
     "save_dir": "convmixer",
     "model_name": "ConvMixer",
     "model_kwargs": {
-        "depth": 8,
-        "patch_length": 50,
-        "spatial_kernel_size": 3,
-        "hidden_channels": 256
+        "depth": 2,
+        "patch_length": 11,
+        "spatial_kernel_size": 11,
+        "hidden_channels": 256,
+        "activation_constructor": "GELU"
     },
     "loss_fn_class": "CrossEntropyLoss",
+    "loss_fn_kwargs": {},
     "optimizer_class": "AdamW",
+    "optimizer_kwargs": {"lr": 4e-4, "weight_decay": 0.0},
     "scheduler_class": null,
     "autotune_lr": false,
-    "batch_size": 32,
+    "batch_size": 256,
     "update_bn_steps": 0,
     "val_split_size": 5000,
     "data_bytes": [2],
     "data_repr": "bytes",
-    "total_epochs": 10,
+    "total_epochs": 400,
     "mixup_alpha": 0.0,
     "gaussian_input_noise_stdev": 0.0,
     "label_smoothing": false,
-    "selection_metric": "rank"
+    "selection_metric": "rank",
+    "maximize_selection_metric": false
 }

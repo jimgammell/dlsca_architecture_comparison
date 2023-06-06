@@ -41,7 +41,7 @@ def compute_ascadv1_labels(metadata, bytes, mode='bytes'):
     return labels
 
 class _ASCADBase(torch.utils.data.Dataset):
-    def __init__(self, dataset_name, compressed_filename, train=True, transform=None, target_transform=None, truncate_length=None, store_dataset_in_ram=True):
+    def __init__(self, dataset_name, compressed_filename, desync=0, train=True, transform=None, target_transform=None, truncate_length=None, store_dataset_in_ram=True, smooth_bins=True):
         super().__init__()
         
         if not datasets.is_downloaded(dataset_name):
@@ -54,6 +54,8 @@ class _ASCADBase(torch.utils.data.Dataset):
         )
         self.sbox = AES_Sbox
         self.return_metadata = False
+        self.desync = desync
+        self.smooth_bins = smooth_bins
         
         assert len(self.database_file['Profiling_traces/traces']) == len(self.database_file['Profiling_traces/labels']) == len(self.database_file['Profiling_traces/metadata'])
         assert len(self.database_file['Attack_traces/traces']) == len(self.database_file['Attack_traces/labels']) == len(self.database_file['Attack_traces/metadata'])
@@ -85,6 +87,8 @@ class _ASCADBase(torch.utils.data.Dataset):
                 'key': np.array(self.index_database('metadata')['key'][idx], dtype=np.uint8),
                 'masks': np.array(self.index_database('metadata')['masks'][idx], dtype=np.uint8)
             }
+        self.data_mean = np.mean([self.get_data(idx) for idx in range(self.length)])
+        self.data_stdev = np.std([self.get_data(idx) for idx in range(self.length)])
     
     def __getitem__(self, idx):
         idx = idx % self.length
@@ -94,9 +98,10 @@ class _ASCADBase(torch.utils.data.Dataset):
         target = self.compute_target(metadata)
         to_repr = {'bytes': to_byte, 'bits': to_bits, 'hw': to_hw}[self.data_repr]
         assert target[self.data_repr+'_2'] == to_repr(orig_target)
-        #data = (data - self.trace_range[0]) / (self.trace_range[1]-self.trace_range[0])
-        data = (data-np.mean(data))/np.std(data)
+        data = (data-self.data_mean)/self.data_stdev
         data = torch.tensor(data, dtype=torch.float).view(*self.data_shape)
+        if self.smooth_bins:
+            data += (torch.rand_like(data)-self.data_mean)/self.data_stdev
         target = {key: torch.tensor(value, dtype=torch.long).squeeze() for key, value in target.items()}
         if self.transform is not None:
             data = self.transform(data)
@@ -114,6 +119,38 @@ class ASCADV1Fixed(_ASCADBase):
     dataset_name = 'ASCAD-V1-Fixed'
     download_url = r'https://www.data.gouv.fr/s/resources/ascad/20180530-163000/ASCAD_data.zip'
     member_to_unzip = r'ASCAD_data/ASCAD_databases/ASCAD.h5'
+    compressed_filename = r'ascadv1-fixed.h5'
+    
+    def __init__(self, bytes=None, data_repr='bytes', **kwargs):
+        super().__init__(self.__class__.dataset_name, self.__class__.compressed_filename, **kwargs)
+        if bytes is None:
+            bytes = np.arange(16)
+        self.bytes = np.array(bytes)
+        self.bytes.sort()
+        self.data_repr = data_repr
+        self.compute_target = lambda metadata: compute_ascadv1_labels(metadata, self.bytes, mode=self.data_repr)
+        self.trace_range = (-66.0, 47.0)
+
+class ASCADV1Fixed_DS50(_ASCADBase):
+    dataset_name = 'ASCAD-V1-Fixed-DS50'
+    download_url = r'https://www.data.gouv.fr/s/resources/ascad/20180530-163000/ASCAD_data.zip'
+    member_to_unzip = r'ASCAD_data/ASCAD_databases/ASCAD_desync50.h5'
+    compressed_filename = r'ascadv1-fixed.h5'
+    
+    def __init__(self, bytes=None, data_repr='bytes', **kwargs):
+        super().__init__(self.__class__.dataset_name, self.__class__.compressed_filename, **kwargs)
+        if bytes is None:
+            bytes = np.arange(16)
+        self.bytes = np.array(bytes)
+        self.bytes.sort()
+        self.data_repr = data_repr
+        self.compute_target = lambda metadata: compute_ascadv1_labels(metadata, self.bytes, mode=self.data_repr)
+        self.trace_range = (-66.0, 47.0)
+
+class ASCADV1Fixed_DS100(_ASCADBase):
+    dataset_name = 'ASCAD-V1-Fixed-DS100'
+    download_url = r'https://www.data.gouv.fr/s/resources/ascad/20180530-163000/ASCAD_data.zip'
+    member_to_unzip = r'ASCAD_data/ASCAD_databases/ASCAD_desync100.h5'
     compressed_filename = r'ascadv1-fixed.h5'
     
     def __init__(self, bytes=None, data_repr='bytes', **kwargs):

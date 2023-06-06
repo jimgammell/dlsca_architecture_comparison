@@ -14,10 +14,22 @@ class ConvMixer(nn.Module):
         patch_length=50,
         spatial_kernel_size=3,
         hidden_channels=256,
-        activation_constructor=type('GELU', (nn.GELU,), {}),
-        norm_constructor=type('BatchNorm', (nn.BatchNorm1d,), {})
+        spatial_skip_conn=True,
+        channel_skip_conn=False,
+        activation_constructor=None,
+        norm_constructor=type('BatchNorm', (nn.BatchNorm1d,), {}),
+        **kwargs
     ):
         super().__init__()
+        
+        if type(activation_constructor) == str:
+            activation_constructor = getattr(nn, activation_constructor)
+        elif activation_constructor is None:
+            activation_constructor = nn.SELU if norm_constructor is None else nn.GELU
+        if type(norm_constructor) == str:
+            norm_constructor = getattr(nn, norm_constructor)
+        if norm_constructor is None:
+            norm_constructor = nn.Identity
         
         class SpatialMixer(nn.Module):
             def __init__(self):
@@ -31,9 +43,13 @@ class ConvMixer(nn.Module):
                     ('act', activation_constructor()),
                     ('norm', norm_constructor(hidden_channels))
                 ]))
+                self.skip_conn = spatial_skip_conn
                 
             def forward(self, x):
-                return x + self.model(x)
+                out = self.model(x)
+                if self.skip_conn:
+                    out = (out + x) / np.sqrt(2)
+                return out
         
         class ChannelMixer(nn.Module):
             def __init__(self):
@@ -46,50 +62,57 @@ class ConvMixer(nn.Module):
                     ('act', activation_constructor()),
                     ('norm', norm_constructor(hidden_channels))
                 ]))
+                self.skip_conn = channel_skip_conn
                 
             def forward(self, x):
-                return self.model(x)
+                out = self.model(x)
+                if self.skip_conn:
+                    out = (out + x) / np.sqrt(2)
+                return out
         
-        
-        
-        patch_embedding = nn.Sequential(OrderedDict([
+        self.patch_embedding = nn.Sequential(OrderedDict([
             ('conv', nn.Conv1d(
                 in_channels=input_shape[0], out_channels=hidden_channels, kernel_size=patch_length,
                 stride=patch_length, padding=(patch_length-(input_shape[1]%patch_length))%patch_length
             ))
         ]))
         
-        pre_mixer = nn.Sequential(OrderedDict([
+        self.pre_mixer = nn.Sequential(OrderedDict([
             ('act', activation_constructor()),
             ('norm', norm_constructor(hidden_channels))
         ]))
         
-        mixer = nn.Sequential(OrderedDict([
+        self.mixer = nn.Sequential(OrderedDict([
             ('layer_{}'.format(layer_idx),
              nn.Sequential(OrderedDict([('spatial_mixer', SpatialMixer()), ('channel_mixer', ChannelMixer())]))
             ) for layer_idx in range(depth)
         ]))
         
-        pooling = nn.Sequential(OrderedDict([
+        self.pooling = nn.Sequential(OrderedDict([
             ('pool', nn.AdaptiveAvgPool1d(1)),
             ('flatten', nn.Flatten())
-        ]))
-        
-        self.feature_extractor = nn.Sequential(OrderedDict([
-            ('patch_embedding', patch_embedding),
-            ('pre_mixer', pre_mixer),
-            ('mixer', mixer),
-            ('pooling', pooling)
         ]))
         
         self.heads = nn.ModuleDict({
             head_key: nn.Linear(hidden_channels, head_size) for head_key, head_size in head_sizes.items()
         })
         
+        def init_weights(mod):
+            if isinstance(mod, (nn.Linear, nn.Conv1d)):
+                if norm_constructor is not None:
+                    nn.init.kaiming_uniform_(mod.weight, nonlinearity='relu')
+                else:
+                    nn.init.kaiming_uniform_(mod.weight, nonlinearity='linear')
+                mod.bias.data.zero_()
+        self.apply(init_weights)
+        
     def forward(self, x):
-        features = self.feature_extractor(x)
-        out = {head_name: head(features) for head_name, head in self.heads.items()}
-        return out
+        x = self.patch_embedding(x)
+        x = self.pre_mixer(x)
+        x = self.mixer(x)
+        x = self.pooling(x)
+        x = {head_name: head(x) for head_name, head in self.heads.items()}
+        return x
 
 def main():
     print('Testing ConvMixer code.')
