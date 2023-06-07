@@ -45,7 +45,7 @@ class ClassifierTrainer:
         data_repr='bytes',
         train_metrics={'acc': train.get_acc, 'soft_acc': train.get_soft_acc, 'rank': train.get_rank},
         eval_metrics={'acc': train.get_acc, 'soft_acc': train.get_soft_acc, 'rank': train.get_rank},
-        average_training_batches=False,
+        average_training_batches=True,
         **kwargs
     ):
         if type(loss_fn_class) == str:

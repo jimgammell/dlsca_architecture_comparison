@@ -41,7 +41,7 @@ def unpack_batch(batch, device):
 
 def get_dataloader(dataset, batch_size=32, shuffle=False):
     return torch.utils.data.DataLoader(
-        dataset, batch_size=batch_size, shuffle=shuffle, num_workers=multiprocessing.cpu_count()//4, pin_memory=True
+        dataset, batch_size=batch_size, shuffle=shuffle, num_workers=multiprocessing.cpu_count()//12, pin_memory=True
     )
 
 def get_acc(logits, labels):
