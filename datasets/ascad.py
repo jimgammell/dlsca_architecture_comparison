@@ -44,10 +44,7 @@ class _ASCADBase(torch.utils.data.Dataset):
     def __init__(self, dataset_name, compressed_filename, train=True, transform=None, target_transform=None, truncate_length=None, store_dataset_in_ram=True):
         super().__init__()
         
-        if not datasets.is_downloaded(dataset_name):
-            raise Exception(
-                'Dataset has not been downloaded. Re-run with argument \'--download-dataset {}\' to download it.'.format(dataset_name)
-            )
+        datasets.check_downloaded(dataset_name)
         self.train = train
         self.database_file = h5py.File(
             os.path.join(datasets.get_path(dataset_name), compressed_filename), 'r'
