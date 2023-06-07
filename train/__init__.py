@@ -36,12 +36,12 @@ def value(x):
 def unpack_batch(batch, device):
     x, y = batch
     x, y = x.to(device), {key: value.to(device) for key, value in y.items()}
-    y = {key: nn.functional.one_hot(value, num_classes=256).to(torch.float) for key, value in y.items()}
+    #y = {key: nn.functional.one_hot(value, num_classes=256).to(torch.float) for key, value in y.items()}
     return x, y
 
 def get_dataloader(dataset, batch_size=32, shuffle=False):
     return torch.utils.data.DataLoader(
-        dataset, batch_size=batch_size, shuffle=shuffle, num_workers=multiprocessing.cpu_count(), pin_memory=True
+        dataset, batch_size=batch_size, shuffle=shuffle, num_workers=multiprocessing.cpu_count()//4, pin_memory=True
     )
 
 def get_acc(logits, labels):

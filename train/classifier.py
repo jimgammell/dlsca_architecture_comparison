@@ -3,6 +3,7 @@ import os
 import time
 import pickle
 import numpy as np
+import wandb
 from scipy.special import softmax
 from matplotlib import pyplot as plt
 import torch
@@ -19,24 +20,24 @@ class ClassifierTrainer:
         self,
         dataset_name,
         model_name,
-        model_kwargs={'base_channels': 64, 'stage_blocks': [2, 2, 2, 2]}, # same as ResNet-18
+        model_kwargs={},
         optimizer_class=optim.SGD,
-        optimizer_kwargs={'lr': 1e-3, 'momentum': 0.9, 'nesterov': True, 'weight_decay': 0.0},
+        optimizer_kwargs={},
         l1_weight_penalty=0.0,
         gaussian_input_noise_stdev=0.0,
         mixup_alpha=0.0,
         label_smoothing=False,
-        loss_fn_class=nn.CrossEntropyLoss,
+        loss_fn_class=nn.BCELoss,
         loss_fn_kwargs={},
-        scheduler_class=optim.lr_scheduler.OneCycleLR,
-        scheduler_kwargs={'max_lr': 1e-3, 'anneal_strategy': 'cos', 'pct_start': 0.3},
+        scheduler_class=None,
+        scheduler_kwargs={},
         seed=None,
         device=None,
-        batch_size=64,
-        update_bn_steps=100,
+        batch_size=32,
+        update_bn_steps=0,
         val_split_size=5000,
-        n_test_traces=128,
-        final_evaluation_repetitions=100,
+        n_test_traces=1024,
+        final_evaluation_repetitions=5,
         selection_metric=None,
         maximize_selection_metric=True,
         training_set_truncate_length=None, # Number of training datapoints to include,
@@ -100,6 +101,8 @@ class ClassifierTrainer:
         self.get_model = lambda: model_class(self.input_shape, self.model_heads, **self.model_kwargs).to(self.device)
         self.get_optimizer = lambda: optimizer_class(self.model.parameters(), **self.optimizer_kwargs)
         self.get_scheduler = lambda n_epochs: scheduler_class(self.optimizer, epochs=n_epochs, steps_per_epoch=len(train_dataset)//batch_size+(1 if len(train_dataset)%batch_size!=0 else 0), **self.scheduler_kwargs) if scheduler_class is not None else None
+        if label_smoothing:
+            self.loss_fn_kwargs['label_smoothing'] = 0.1
         self.get_loss_fn = lambda: loss_fn_class(**self.loss_fn_kwargs)
         
     def reset(self, epochs_to_run):
@@ -128,14 +131,16 @@ class ClassifierTrainer:
             indices = torch.randperm(traces.size(0), device=self.device, dtype=torch.long)
             mu_lambda = np.random.beta(self.mixup_alpha, self.mixup_alpha)
             traces = mu_lambda*traces + (1-mu_lambda)*traces[indices]
-            labels = {key: mu_lambda*labels[key] + (1-mu_lambda)*labels[key][indices] for key in labels.keys()}
         if self.label_smoothing:
             labels = {key: 0.9*val + 0.1*torch.ones_like(val)/(val.size(-1)-1) for key, val in labels.items()}
         logits = self.model(traces)
         total_loss = 0.0
         for hidx, (head_name, head_logits) in enumerate(logits.items()):
             target = labels[head_name]
-            loss = self.loss_fn(head_logits, target)
+            if self.mixup_alpha > 0:
+                loss = mu_lambda*self.loss_fn(head_logits, target) + (1-mu_lambda)*self.loss_fn(head_logits, target[indices])
+            else:
+                loss = self.loss_fn(head_logits, target)
             total_loss += loss
             rv['loss__'+head_name] = train.value(loss)
             for metric_name, metric_fn in self.train_metrics.items():
@@ -267,16 +272,17 @@ class ClassifierTrainer:
         rv.update({'final_rank': np.mean([val for key, val in rv.items() if 'final_rank__' in key])})
         return rv
     
-    def train_model(self, epochs, results_save_dir=None, model_save_dir=None, compute_max_lr=True):
+    def train_model(self, epochs, results_save_dir=None, model_save_dir=None, compute_max_lr=True, generate_plots=True, report_to_wandb=False):
         if compute_max_lr:
             lr_results_save_dir = os.path.join(results_save_dir, 'lr_sweep') if results_save_dir is not None else None
             if lr_results_save_dir is not None:
                 os.makedirs(lr_results_save_dir, exist_ok=True)
             min_lr, max_lr = self.smith_lr_finder(results_save_dir=lr_results_save_dir)
             self.optimizer_kwargs['lr'] = max_lr
-            self.scheduler_kwargs['max_lr'] = max_lr
-            self.scheduler_kwargs['div_factor'] = max_lr/min_lr
-            self.scheduler_kwargs['final_div_factor'] = max_lr/min_lr
+            if self.get_scheduler is not None:
+                self.scheduler_kwargs['max_lr'] = max_lr
+                self.scheduler_kwargs['div_factor'] = max_lr/min_lr
+                self.scheduler_kwargs['final_div_factor'] = max_lr/min_lr
         self.reset(epochs)
         train_rv, test_rv = train.ResultsDict(), train.ResultsDict()
         if self.val_dataloader is not None:
@@ -288,14 +294,22 @@ class ClassifierTrainer:
         
         best_metric, best_model = -np.inf, None
         for epoch in range(1, epochs+1):
+            t0 = time.time()
             train_brv = self.train_epoch(self.train_dataloader, average_batches=self.average_training_batches)
             train_rv.update(train_brv)
             self.update_bn_stats(self.train_dataloader)
+            t0 = time.time()
             val_brv = self.eval_epoch(self.val_dataloader)
             val_rv.update(val_brv)
+            t0 = time.time()
             test_brv = [self.evaluate_model(truncate_at_sample=self.n_test_traces) for _ in range(self.final_evaluation_repetitions)]
             test_brv = {key: np.mean([val[key] for val in test_brv]) for key in test_brv[0].keys()}
             test_rv.update(test_brv)
+            if report_to_wandb:
+                wandb.log({'epoch': epoch})
+                wandb.log({'train_'+k: v for k, v in train_brv.items()})
+                wandb.log({'val_'+k: v for k, v in val_brv.items()})
+                wandb.log({'test_'+k: v for k, v in test_brv.items()})
             if self.selection_metric is not None:
                 metric = val_brv[self.selection_metric]
                 if not self.maximize_selection_metric:
@@ -308,8 +322,8 @@ class ClassifierTrainer:
             for phase, rv in [('train', train_brv), ('val', val_brv), ('test', test_brv)]:
                 for metric_name in [k for k in rv.keys() if '__' not in k]:
                     print('{} {}: {}'.format(phase, metric_name, np.mean(rv[metric_name])), end='')
-                    if any(metric_name+'__' in k for k in rv.keys()):
-                        vals = [np.mean(v) for k, v in rv.items() if metric_name+'__' in k]
+                    if any('__' in k and k.split('__')[0]==metric_name for k in rv.keys()):
+                        vals = [np.mean(v) for k, v in rv.items() if k.split('__')[0]==metric_name in k]
                         print(' ({} -- {})'.format(min(vals), max(vals)))
                     else:
                         print()
@@ -329,7 +343,7 @@ class ClassifierTrainer:
             for metric_name in [k for k in rv.keys() if '__' not in k]:
                 print('{} {}: {}'.format(phase, metric_name, np.mean(rv[metric_name])), end='')
                 if any('__' in k and k.split('__')[0]==metric_name for k in rv.keys()):
-                    vals = [np.mean(v) for k, v in rv.items() if metric_name+'__' in k]
+                    vals = [np.mean(v) for k, v in rv.items() if k.split('__')[0]==metric_name]
                     print(' ({} -- {})'.format(min(vals), max(vals)))
                 else:
                     print()
@@ -360,57 +374,58 @@ class ClassifierTrainer:
             metric_names = [k for k in train_rv.keys() if '__' not in k]
             metric_names += [k for k in test_rv.keys() if ('__' not in k) and (k not in metric_names)]
             
-            os.makedirs(os.path.join(results_save_dir, 'figs'), exist_ok=True)
-            # plot training curves
-            num_metrics = len(metric_names)
-            (fig, axes) = plt.subplots(2, num_metrics, figsize=(num_metrics*6, 2*6))
-            epochs = np.arange(len(val_rv['loss']))
-            train_epochs = np.linspace(0, len(val_rv['loss'])-1, len(train_rv['loss']))
-            stack = lambda rv, key: np.stack([v for k, v in rv.items() if key+'__' in k], axis=0).transpose(1, 0)
-            for idx, (metric_name, ax0, ax1) in enumerate(zip(metric_names, axes[0, :], axes[1, :])):
-                if metric_name in train_rv.keys():
-                    ax0.plot(train_epochs, train_rv[metric_name], '.', color='blue', label='Training')
-                    if any('__' in k and k.split('__')[0]==metric_name for k in train_rv.keys()):
-                        ax1.plot(train_epochs, stack(train_rv, metric_name), '.', color='blue')
-                if metric_name in val_rv.keys():
-                    ax0.plot(epochs, val_rv[metric_name], '-', color='red', label='Validation')
-                    if any('__' in k and k.split('__')[0]==metric_name for k in val_rv.keys()):
-                        ax1.plot(epochs, stack(val_rv, metric_name), '-', color='red', label='Validation')
-                if metric_name in test_rv.keys():
-                    ax0.plot(epochs, test_rv[metric_name], '-', color='green', label='Testing')
-                    if any('__' in k and k.split('__')[0]==metric_name for k in val_rv.keys()):
-                        ax1.plot(epochs, stack(test_rv, metric_name), '-', color='green', label='Testing')
-                ax0.set_xlabel('Epochs')
-                ax1.set_xlabel('Epochs')
-                disp_metric_name = ' '.join(metric_name.split('_')).capitalize()
-                ax0.set_ylabel(disp_metric_name)
-                ax1.set_ylabel(disp_metric_name)
-                if ('loss' in metric_name) or ('norm' in metric_name):
-                    ax0.set_yscale('log')
-                    ax1.set_yscale('log')
-                ax0.legend()
-                ax0.grid()
-                ax1.grid()
-            fig.suptitle('Training curves')
-            fig.savefig(os.path.join(results_save_dir, 'figs', 'train_curves.png'))
-            
-            # plot rank of correct key as we add traces
-            (fig, axes) = plt.subplots(1, 2, figsize=(12, 6))
-            samples = np.arange(len(test_final_rv['full_trace'][0]))
-            mean_final_trace = np.mean(np.stack(test_final_rv['full_trace']), axis=0)
-            axes[0].plot(samples, mean_final_trace, '-', color='blue')
-            for val in [val for key, val in test_final_rv.items() if 'full_trace__' in key]:
-                mean_final_trace_k = np.mean(np.stack(val), axis=0)
-                axes[1].plot(samples, mean_final_trace_k, '.', color='blue')
-            axes[0].set_title('Average over bytes')
-            axes[1].set_title('Per-byte')
-            for ax in axes.flatten():
-                ax.set_xlabel('Samples')
-                ax.set_ylabel('Rank of correct key')
-                ax.set_ylim(-1, 256)
-                ax.grid()
-            fig.suptitle('Correct key rank vs. number of samples seen')
-            fig.savefig(os.path.join(results_save_dir, 'figs', 'key_vs_samples.png'))
+            if generate_plots:
+                os.makedirs(os.path.join(results_save_dir, 'figs'), exist_ok=True)
+                # plot training curves
+                num_metrics = len(metric_names)
+                (fig, axes) = plt.subplots(2, num_metrics, figsize=(num_metrics*6, 2*6))
+                epochs = np.arange(len(val_rv['loss']))
+                train_epochs = np.linspace(0, len(val_rv['loss'])-1, len(train_rv['loss']))
+                stack = lambda rv, key: np.stack([v for k, v in rv.items() if key+'__' in k], axis=0).transpose(1, 0)
+                for idx, (metric_name, ax0, ax1) in enumerate(zip(metric_names, axes[0, :], axes[1, :])):
+                    if metric_name in train_rv.keys():
+                        ax0.plot(train_epochs, train_rv[metric_name], '.', color='blue', label='Training')
+                        if any('__' in k and k.split('__')[0]==metric_name for k in train_rv.keys()):
+                            ax1.plot(train_epochs, stack(train_rv, metric_name), '.', color='blue')
+                    if metric_name in val_rv.keys():
+                        ax0.plot(epochs, val_rv[metric_name], '-', color='red', label='Validation')
+                        if any('__' in k and k.split('__')[0]==metric_name for k in val_rv.keys()):
+                            ax1.plot(epochs, stack(val_rv, metric_name), '-', color='red', label='Validation')
+                    if metric_name in test_rv.keys():
+                        ax0.plot(epochs, test_rv[metric_name], '-', color='green', label='Testing')
+                        if any('__' in k and k.split('__')[0]==metric_name for k in val_rv.keys()):
+                            ax1.plot(epochs, stack(test_rv, metric_name), '-', color='green', label='Testing')
+                    ax0.set_xlabel('Epochs')
+                    ax1.set_xlabel('Epochs')
+                    disp_metric_name = ' '.join(metric_name.split('_')).capitalize()
+                    ax0.set_ylabel(disp_metric_name)
+                    ax1.set_ylabel(disp_metric_name)
+                    if ('loss' in metric_name) or ('norm' in metric_name):
+                        ax0.set_yscale('log')
+                        ax1.set_yscale('log')
+                    ax0.legend()
+                    ax0.grid()
+                    ax1.grid()
+                fig.suptitle('Training curves')
+                fig.savefig(os.path.join(results_save_dir, 'figs', 'train_curves.png'))
+
+                # plot rank of correct key as we add traces
+                (fig, axes) = plt.subplots(1, 2, figsize=(12, 6))
+                samples = np.arange(len(test_final_rv['full_trace'][0]))
+                mean_final_trace = np.mean(np.stack(test_final_rv['full_trace']), axis=0)
+                axes[0].plot(samples, mean_final_trace, '-', color='blue')
+                for val in [val for key, val in test_final_rv.items() if 'full_trace__' in key]:
+                    mean_final_trace_k = np.mean(np.stack(val), axis=0)
+                    axes[1].plot(samples, mean_final_trace_k, '.', color='blue')
+                axes[0].set_title('Average over bytes')
+                axes[1].set_title('Per-byte')
+                for ax in axes.flatten():
+                    ax.set_xlabel('Samples')
+                    ax.set_ylabel('Rank of correct key')
+                    ax.set_ylim(-1, 256)
+                    ax.grid()
+                fig.suptitle('Correct key rank vs. number of samples seen')
+                fig.savefig(os.path.join(results_save_dir, 'figs', 'key_vs_samples.png'))
             
         # save best model
         if results_save_dir is not None:

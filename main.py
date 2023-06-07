@@ -1,5 +1,11 @@
 import time
 import argparse
+import wandb
+import copy
+import pickle
+import os
+import traceback
+from torch import multiprocessing
 
 import datasets, datasets.test
 import train, train.classifier
@@ -23,16 +29,62 @@ def download_dataset(dataset_args, force=False):
         print('\tDone. Time taken: {} sec.'.format(time.time()-t0))
 
 def train_classifier(dataset_args, settings, seed=None, device=None):
-    def run_(seed_):
+    def run_(seed_, dataset_name):
         save_dir = config.results_subdir(settings['save_dir'], dataset_name, *(['seed_%d'%(seed_)] if seed_ is not None else []))
         trainer = train.classifier.ClassifierTrainer(dataset_name, seed=seed_, device=device, **settings)
         trainer.train_model(settings['total_epochs'], results_save_dir=save_dir, compute_max_lr=settings['autotune_lr'])
     for dataset_name in dataset_args:
         if len(seed) == 0:
-            run_(None)
+            run_(None, dataset_name)
         else:
             for seed_ in seed:
-                run_(seed_)
+                run_(seed_, dataset_name)
+
+def htune_classifier(dataset_args, settings, seed=None, device=None, num_agents=1):
+    assert (len(dataset_args)==1) and (len(seed)==1)
+    dataset_name = dataset_args[0]
+    seed = seed[0]
+    wandb_config = settings['wandb_config']
+    wandb_config['parameters'] = config.denest_dict(wandb_config['parameters'])
+    classifier_settings = {key: val for key, val in settings.items() if key != 'wandb_config'}
+    sweep_id = wandb.sweep(
+        sweep=wandb_config,
+        project=settings['save_dir']
+    )
+    
+    def run_wandb_trial_():
+        try:
+            wandb.init()
+            trial_settings = copy.deepcopy(classifier_settings)
+            wandb_config = dict(wandb.config)
+            wandb_config = config.nest_dict(wandb_config)
+            trial_settings.update(wandb_config)
+            save_dir = config.results_subdir(settings['save_dir'], dataset_name)
+            if len(os.listdir(save_dir)) > 0:
+                save_dir = os.path.join(save_dir, 'trial_%d'%(max(int(f.split('_')[-1]) for f in os.listdir(save_dir))+1))
+            else:
+                save_dir = os.path.join(save_dir, 'trial_0')
+            trainer = train.classifier.ClassifierTrainer(dataset_name, seed=seed, device=device, **trial_settings)
+            trainer.train_model(settings['total_epochs'], results_save_dir=save_dir, compute_max_lr=False, generate_plots=False, report_to_wandb=True)
+        except Exception:
+            traceback.print_exc()
+            raise Exception('Trial code crashed.')
+    
+    def spawn_agent():
+        wandb.agent(sweep_id, function=run_wandb_trial_)
+    
+    if num_agents > 1:
+        procs = []
+        for _ in range(num_agents):
+            p = multiprocessing.Process(target=spawn_agent)
+            procs.append(p)
+            p.start()
+        for p in procs:
+            p.join()
+    elif num_agents == 1:
+        spawn_agent()
+    else:
+        raise NotImplementedError
 
 def main():
     parser = argparse.ArgumentParser()
@@ -52,6 +104,14 @@ def main():
         help='Classifiers to train, as defined in the respective config files.'
     )
     parser.add_argument(
+        '--htune-classifier', choices=config.get_available_configs(train=False), nargs='+', default=[],
+        help='Classifiers for which to tune hyperparameters, as defined in the respective config files.'
+    )
+    parser.add_argument(
+        '--num-wandb-agents', default=1, type=int,
+        help='Number of WANDB agents to run for this trial configuration.'
+    )
+    parser.add_argument(
         '-f', '--force', default=False, action='store_true',
         help='Force the command to take effect.'
     )
@@ -64,6 +124,12 @@ def main():
     parser.add_argument(
         '--num-epochs', default=None, type=int, help='Number of epochs to train for. Overrides the value specified in the trial configuration file.'
     )
+    parser.add_argument(
+        '--lr', default=None, type=float, help='Override the learning rate specified in the config file with this value.'
+    )
+    parser.add_argument(
+        '--save-dir', default=None, type=str, help='Override the results directory specified in the config file with this value.'
+    )
     args = parser.parse_args()
     
     get_datasets(args)
@@ -75,7 +141,14 @@ def main():
         settings = config.load_config(config_name)
         if args.num_epochs is not None:
             settings['total_epochs'] = args.num_epochs
+        if args.lr is not None:
+            settings['optimizer_kwargs']['lr'] = args.lr
+        if args.save_dir is not None:
+            settings['save_dir'] = args.save_dir
         train_classifier(args.dataset, settings, seed=args.seed, device=args.device)
+    for config_name in args.htune_classifier:
+        settings = config.load_config(config_name, train=False)
+        htune_classifier(args.dataset, settings, seed=args.seed, device=args.device, num_agents=args.num_wandb_agents)
 
 if __name__ == '__main__':
     main()
