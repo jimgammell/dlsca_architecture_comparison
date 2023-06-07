@@ -4,11 +4,20 @@ import gdown
 import shutil
 import zipfile
 from collections import OrderedDict
+<<<<<<< HEAD
+from datasets.ascad import ASCADV1Fixed, ASCADV1Variable, ASCADV2
+from datasets.aes_rd import AES_RD
+
+AVAILABLE_DATASETS = OrderedDict([
+    (dataset_class.dataset_name, dataset_class)
+    for dataset_class in [ASCADV1Fixed, ASCADV1Variable, AES_RD]
+=======
 from datasets.ascad import ASCADV1Fixed, ASCADV1Fixed_DS50, ASCADV1Fixed_DS100, ASCADV1Variable, ASCADV2
 
 AVAILABLE_DATASETS = OrderedDict([
     (dataset_class.dataset_name, dataset_class)
     for dataset_class in [ASCADV1Fixed, ASCADV1Fixed_DS50, ASCADV1Fixed_DS100, ASCADV1Variable]
+>>>>>>> 42438a0364bbd8f3225a2c1a8a21fbfdafa5c29c
 ])
 
 def get_available_datasets():
@@ -34,6 +43,12 @@ def unzip_file(src, dest, member=None, remove=True):
 def check_name(dataset_name):
     if not dataset_name in get_available_datasets():
         raise ValueError('Unrecognized dataset name: \'{}\''.format(dataset_name))
+
+def check_downloaded(dataset_name):
+    if not is_downloaded(dataset_name):
+        raise Exception(
+            'Dataset has not been downloaded. Re-run with argument \'--download-dataset {}\' to download it.'.format(dataset_name)
+        )
         
 def get_path(dataset_name):
     check_name(dataset_name)
