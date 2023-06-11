@@ -14,6 +14,8 @@ import config
 import datasets
 import train
 import models
+from external_libs.sam import SAM
+from external_libs.temperature_scaling import ModelWithTemperature
 
 class ClassifierTrainer:
     def __init__(
@@ -23,9 +25,12 @@ class ClassifierTrainer:
         model_kwargs={},
         optimizer_class=optim.SGD,
         optimizer_kwargs={},
+        use_sam=False,
+        sam_kwargs={},
         l1_weight_penalty=0.0,
         gaussian_input_noise_stdev=0.0,
         mixup_alpha=0.0,
+        rescale_temperature=False,
         label_smoothing=False,
         loss_fn_class=nn.BCELoss,
         loss_fn_kwargs={},
@@ -36,15 +41,15 @@ class ClassifierTrainer:
         batch_size=32,
         update_bn_steps=0,
         val_split_size=5000,
-        n_test_traces=1024,
-        final_evaluation_repetitions=5,
+        n_test_traces=10000,
+        final_evaluation_repetitions=1,
         selection_metric=None,
         maximize_selection_metric=True,
         training_set_truncate_length=None, # Number of training datapoints to include,
         data_bytes=None,
         data_repr='bytes',
-        train_metrics={'acc': train.get_acc, 'soft_acc': train.get_soft_acc, 'rank': train.get_rank},
-        eval_metrics={'acc': train.get_acc, 'soft_acc': train.get_soft_acc, 'rank': train.get_rank},
+        train_metrics={'acc': train.get_acc, 'rank': train.get_rank},
+        eval_metrics={'acc': train.get_acc, 'rank': train.get_rank},
         average_training_batches=True,
         **kwargs
     ):
@@ -55,7 +60,7 @@ class ClassifierTrainer:
         if type(optimizer_class) == str:
             optimizer_class = getattr(optim, optimizer_class)
         
-        self.seed = config.set_seed(seed)
+        self.seed = config.set_seed(0) #seed)
         self.device = config.get_device(device)
         self.update_bn_steps = update_bn_steps
         self.train_metrics = train_metrics
@@ -85,7 +90,7 @@ class ClassifierTrainer:
         self.batch_size = batch_size
         self.get_train_dataloader = lambda: train.get_dataloader(train_dataset, shuffle=True, batch_size=self.batch_size)
         self.get_val_dataloader = lambda: train.get_dataloader(val_dataset, shuffle=False, batch_size=batch_size)
-        self.get_test_dataloader = lambda: train.get_dataloader(test_dataset, shuffle=True, batch_size=batch_size)
+        self.get_test_dataloader = lambda: train.get_dataloader(test_dataset, shuffle=False, batch_size=batch_size)
         #   Shuffling test dataloader so it's easier to do the final evaluation with different subsets of traces
         
         model_class = models.get_class(model_name)
@@ -98,21 +103,35 @@ class ClassifierTrainer:
         self.optimizer_kwargs = optimizer_kwargs
         self.scheduler_kwargs = scheduler_kwargs
         self.loss_fn_kwargs = loss_fn_kwargs
-        self.get_model = lambda: model_class(self.input_shape, self.model_heads, **self.model_kwargs).to(self.device)
-        self.get_optimizer = lambda: optimizer_class(self.model.parameters(), **self.optimizer_kwargs)
-        self.get_scheduler = lambda n_epochs: scheduler_class(self.optimizer, epochs=n_epochs, steps_per_epoch=len(train_dataset)//batch_size+(1 if len(train_dataset)%batch_size!=0 else 0), **self.scheduler_kwargs) if scheduler_class is not None else None
+        self.use_sam = use_sam
+        self.sam_kwargs = sam_kwargs
+        self.rescale_temperature = rescale_temperature
+        if rescale_temperature:
+            self.get_model = lambda: ModelWithTemperature(model_class(
+                self.input_shape, **self.model_kwargs
+            ).to(self.device), device=self.device)
+        else:
+            self.get_model = lambda: model_class(self.input_shape, self.model_heads, **self.model_kwargs).to(self.device)
+        if use_sam:
+            self.get_optimizer = lambda: SAM(self.model.parameters(), optimizer_class, **self.optimizer_kwargs, **self.sam_kwargs)
+        else:
+            self.get_optimizer = lambda: optimizer_class(self.model.parameters(), **self.optimizer_kwargs)
+        if (scheduler_class is None) or (scheduler_class == 'none'):
+            self.get_scheduler = None
+        else:
+            self.get_scheduler = lambda n_epochs: scheduler_class(self.optimizer, n_epochs*len(self.train_dataloader), **self.scheduler_kwargs)
         if label_smoothing:
             self.loss_fn_kwargs['label_smoothing'] = 0.1
         self.get_loss_fn = lambda: loss_fn_class(**self.loss_fn_kwargs)
         
     def reset(self, epochs_to_run):
+        self.train_dataloader = self.get_train_dataloader()
+        self.val_dataloader = self.get_val_dataloader()
+        self.test_dataloader = self.get_test_dataloader()
         self.model = self.get_model()
         self.optimizer = self.get_optimizer()
         self.scheduler = self.get_scheduler(epochs_to_run)
         self.loss_fn = self.get_loss_fn()
-        self.train_dataloader = self.get_train_dataloader()
-        self.val_dataloader = self.get_val_dataloader()
-        self.test_dataloader = self.get_test_dataloader()
     
     @torch.no_grad()
     def measure_bn_stats_step(self, batch):
@@ -132,32 +151,34 @@ class ClassifierTrainer:
             mu_lambda = np.random.beta(self.mixup_alpha, self.mixup_alpha)
             traces = mu_lambda*traces + (1-mu_lambda)*traces[indices]
         if self.label_smoothing:
-            labels = {key: 0.9*val + 0.1*torch.ones_like(val)/(val.size(-1)-1) for key, val in labels.items()}
-        logits = self.model(traces)
-        total_loss = 0.0
-        for hidx, (head_name, head_logits) in enumerate(logits.items()):
-            target = labels[head_name]
+            labels = 0.9*labels + 0.1*torch.ones_like(labels)/(labels.size(-1)-1)
+        def closure(update_rv=False):
+            nonlocal rv
+            logits = self.model(traces)
+            total_loss = 0.0
             if self.mixup_alpha > 0:
-                loss = mu_lambda*self.loss_fn(head_logits, target) + (1-mu_lambda)*self.loss_fn(head_logits, target[indices])
+                loss = mu_lamvda*self.loss_fn(logits, labels) + (1-mu_lambda)*self.loss_fn(logits, labels[indices])
             else:
-                loss = self.loss_fn(head_logits, target)
-            total_loss += loss
-            rv['loss__'+head_name] = train.value(loss)
-            for metric_name, metric_fn in self.train_metrics.items():
-                rv[metric_name+'__'+head_name] = metric_fn(head_logits, target)
-        if self.l1_weight_penalty > 0:
-            total_loss += self.l1_weight_penalty * sum(p.norm(p=1) for p in self.model.parameters())
+                loss = self.loss_fn(logits, labels)
+            if update_rv:
+                rv['loss'] = train.value(loss)
+                for metric_name, metric_fn in self.train_metrics.items():
+                    rv[metric_name] = metric_fn(logits, labels)
+            if self.l1_weight_penalty > 0:
+                loss += self.l1_weight_penalty * sum(p.norm(p=1) for p in self.model.parameters())
+            loss.backward()
+            return loss
         self.optimizer.zero_grad(set_to_none=True)
-        total_loss.backward()
+        loss = closure(update_rv=True)
         norms = train.get_norms(self.model)
         rv['weight_norm'] = norms['weight_norm']
         rv['grad_norm'] = norms['grad_norm']
-        self.optimizer.step()
+        if self.use_sam:
+            self.optimizer.step(closure)
+        else:
+            self.optimizer.step()
         if self.scheduler is not None:
             self.scheduler.step()
-        rv['loss'] = np.mean([v for k, v in rv.items() if 'loss__' in k])
-        for metric_name in self.train_metrics.keys():
-            rv[metric_name] = np.mean([v for k, v in rv.items() if metric_name+'__' in k])
         if self.scheduler is not None:
             rv['lr'] = self.scheduler.get_last_lr()
         else:
@@ -170,17 +191,10 @@ class ClassifierTrainer:
         self.model.eval()
         traces, labels = train.unpack_batch(batch, self.device)
         logits = self.model(traces)
-        total_loss = 0.0
-        for hidx, (head_name, head_logits) in enumerate(logits.items()):
-            target = labels[head_name]
-            loss = self.loss_fn(head_logits, target)
-            total_loss += loss
-            rv['loss__'+head_name] = train.value(loss)
-            for metric_name, metric_fn in self.eval_metrics.items():
-                rv[metric_name+'__'+head_name] = metric_fn(head_logits, target)
-        rv['loss'] = np.mean([v for k, v in rv.items() if 'loss' in k])
-        for metric_name in self.eval_metrics.keys():
-            rv[metric_name] = np.mean([v for k, v in rv.items() if metric_name+'__' in k])
+        loss = self.loss_fn(logits, labels)
+        rv['loss'] = train.value(loss)
+        for metric_name, metric_fn in self.eval_metrics.items():
+            rv[metric_name] = metric_fn(logits, labels)
         return rv
     
     def update_bn_stats(self, dataloader, override_steps=-1):
@@ -193,6 +207,7 @@ class ClassifierTrainer:
     
     def train_epoch(self, dataloader, **kwargs):
         rv = train.run_epoch(dataloader, self.train_step, **kwargs)
+        self.model.set_temperature(self.val_dataloader)
         return rv
     
     def eval_epoch(self, dataloader, **kwargs):
@@ -200,30 +215,30 @@ class ClassifierTrainer:
         return rv
     
     @torch.no_grad()
-    def evaluate_model(self, truncate_at_sample=None, return_full_trace=False):
+    def evaluate_model(self, truncate_at_sample=None, return_full_trace=False, target_byte=2):
         # Compute model predictions on some randomly-selected test traces
         self.model.eval()
         random_indices = np.arange(len(self.test_dataset))
-        np.random.shuffle(random_indices)
-        self.test_dataset.return_metadata = True
+        np.random.shuffle(random_indices) # We want to get random subsets of the test traces each time we run this
+        test_dataset_metadata_setting = self.test_dataset.return_metadata
+        self.test_dataset.return_metadata = True # We need metadata to compute the AES key corresponding to predicted intermediate variable
         logits, metadata = [], []
         for batch in self.test_dataloader:
             traces, _, metadata_ = batch
             traces = traces.to(self.device)
-            logits_ = self.model(traces)
-            logits_ = {key: val.cpu().numpy() for key, val in logits_.items()}
+            logits_ = self.model(traces).cpu().numpy()
             logits.append(logits_)
             metadata.append(metadata_)
             if truncate_at_sample is not None and self.batch_size*len(logits) >= truncate_at_sample:
                 break
-        logits = {key: np.concatenate([val[key] for val in logits], axis=0) for key in logits[0].keys()}
-        plaintexts = np.concatenate([val['plaintext'] for val in metadata], axis=0)
-        aes_keys = np.concatenate([val['key'] for val in metadata], axis=0)
+        logits = np.concatenate([val for val in logits], axis=0)
+        plaintexts = np.concatenate([val['plaintext'][:, target_byte] for val in metadata], axis=0)
+        aes_keys = np.concatenate([val['key'][:, target_byte] for val in metadata], axis=0)
         if truncate_at_sample is not None:
-            logits = {key: val[:truncate_at_sample] for key, val in logits.items()}
+            logits = logits[:truncate_at_sample]
             plaintexts = plaintexts[:truncate_at_sample]
             aes_keys = aes_keys[:truncate_at_sample]
-        self.test_dataset.return_metadata = False
+        self.test_dataset.return_metadata = test_dataset_metadata_setting
         
         # Compute the rank over time, based on https://github.com/suvadeep-iitb/TransNet/blob/master/evaluation_utils_ascad.py
         def get_log_prob(predictions, plaintext):
@@ -236,40 +251,27 @@ class ClassifierTrainer:
             return log_prob
         
         rv = {}
-        for key in logits.keys():
-            predictions = logits[key]
-            target_byte = int(key.split('_')[-1])
-            plaintexts_k = plaintexts[:, target_byte]
-            aes_keys_k = aes_keys[:, target_byte]
+        predictions = softmax(logits, axis=-1)
+        predictions = np.log(predictions + 1e-40)
+        n_samples, n_classes = predictions.shape
+        cum_log_prob = np.zeros((n_samples, n_classes))
+        last_log_prob = np.zeros((1, n_classes))
+        for sidx in range(n_samples):
+            log_prob = get_log_prob(predictions[sidx, :], plaintexts[sidx])
+            last_log_prob += log_prob
+            cum_log_prob[sidx, :] = last_log_prob
             
-            n_samples, n_classes = predictions.shape
-            predictions = softmax(predictions, axis=-1)
-            predictions = np.log(predictions + 1e-40)
-            cum_log_prob = np.zeros((n_samples, n_classes))
-            last_log_prob = np.zeros((1, n_classes))
-            for sidx in range(n_samples):
-                log_prob = get_log_prob(predictions[sidx, :], plaintexts_k[sidx])
-                last_log_prob += log_prob
-                cum_log_prob[sidx, :] = last_log_prob
-            
-            sorted_keys = np.argsort(-cum_log_prob, axis=1)
-            key_ranks = np.zeros((n_samples,), dtype=int) - 1
-            for sidx in range(n_samples):
-                for cidx in range(n_classes):
-                    if sorted_keys[sidx, cidx] == aes_keys_k[sidx]:
-                        key_ranks[sidx] = cidx
-                        break
-            
-            if return_full_trace:
-                rv.update({'full_trace__'+key: key_ranks})
-            rv.update({'mean_rank__'+key: np.mean(key_ranks)})
-            rv.update({'final_rank__'+key: key_ranks[-1]})
+        sorted_keys = np.argsort(-cum_log_prob, axis=1)
+        key_ranks = np.zeros((n_samples,), dtype=int) - 1
+        for sidx in range(n_samples):
+            for cidx in range(n_classes):
+                if sorted_keys[sidx, cidx] == aes_keys[sidx]:
+                    key_ranks[sidx] = cidx
+                    break
         if return_full_trace:
-            rv.update({
-                'full_trace': np.mean(np.stack([val for key, val in rv.items() if 'full_trace__' in key]), axis=0)
-            })
-        rv.update({'mean_rank': np.mean([val for key, val in rv.items() if 'mean_rank__' in key])})
-        rv.update({'final_rank': np.mean([val for key, val in rv.items() if 'final_rank__' in key])})
+            rv.update({'full_trace': key_ranks})
+        rv.update({'mean_rank': np.mean(key_ranks)})
+        rv.update({'final_rank': key_ranks[-1]})
         return rv
     
     def train_model(self, epochs, results_save_dir=None, model_save_dir=None, compute_max_lr=True, generate_plots=True, report_to_wandb=False):
@@ -283,6 +285,7 @@ class ClassifierTrainer:
                 self.scheduler_kwargs['max_lr'] = max_lr
                 self.scheduler_kwargs['div_factor'] = max_lr/min_lr
                 self.scheduler_kwargs['final_div_factor'] = max_lr/min_lr
+        
         self.reset(epochs)
         train_rv, test_rv = train.ResultsDict(), train.ResultsDict()
         if self.val_dataloader is not None:
@@ -318,6 +321,11 @@ class ClassifierTrainer:
                     print('New best model found.')
                     best_metric = metric
                     best_model = {k: v.cpu() for k, v in self.model.state_dict().items()}
+                    if report_to_wandb:
+                        wandb.run.summary.update({'best_epoch': epoch})
+                        wandb.run.summary.update({'best_train_'+k: v for k, v in train_brv.items()})
+                        wandb.run.summary.update({'best_val_'+k: v for k, v in val_brv.items()})
+                        wandb.run.summary.update({'best_test_'+k: v for k, v in test_brv.items()})
             print('Epoch {} completed.'.format(epoch))
             for phase, rv in [('train', train_brv), ('val', val_brv), ('test', test_brv)]:
                 for metric_name in [k for k in rv.keys() if '__' not in k]:
@@ -329,7 +337,7 @@ class ClassifierTrainer:
                         print()
             print()
         if self.selection_metric is None:
-            best_model = {k: v.cpu() for k, v in self.model.state_dict().items()}
+            best_model = {k: v.cpu() for k, v in self.model.state_dict().items()}          
             
         print('Done training. Computing performance of best model.')
         self.reset(1)

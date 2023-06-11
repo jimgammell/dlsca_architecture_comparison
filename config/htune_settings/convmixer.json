@@ -1,43 +1,46 @@
 {
-    "save_dir": "convmixer_htune__randsearch",
+    "save_dir": "convmixer_htune__tighter_sweep",
     "model_name": "ConvMixer",
     "model_kwargs": {
         "depth": 2,
-        "hidden_channels": 256
+        "hidden_channels": 256,
+        "patch_length": 51
     },
     "loss_fn_class": "CrossEntropyLoss",
     "loss_fn_kwargs": {},
+    "use_sam": true,
+    "rescale_temperature": true,
     "optimizer_class": "AdamW",
-    "optimizer_kwargs": {},
-    "scheduler_class": "OneCycleLR",
-    "scheduler_kwargs": {
-        "cycle_momentum": false
+    "optimizer_kwargs": {
+        "weight_decay": 1e-8
     },
+    "scheduler_class": "CosineAnnealingLR",
     "autotune_lr": false,
     "batch_size": 256,
     "update_bn_steps": 0,
-    "val_split_size": 5000,
+    "val_split_size": 10000,
     "data_bytes": [2],
     "data_repr": "bytes",
     "total_epochs": 100,
     "selection_metric": "rank",
     "maximize_selection_metric": false,
+    "sam_kwargs": {
+        "adaptive": true,
+        "rho": 1e-2
+    },
     "wandb_config": {
-        "method": "random",
+        "method": "grid",
         "name": "convmixer",
         "parameters": {
-            "optimizer_kwargs": {
-                "weight_decay": {"distribution": "log_uniform_values", "min": 1e-12, "max": 1e0}
-            },
-            "scheduler_kwargs": {
-                "max_lr": {"distribution": "log_uniform_values", "min": 1e-8, "max": 1e0}
-            },
             "model_kwargs": {
-                "patch_length": {"values": [11, 21, 31]},
-                "spatial_kernel_size": {"values": [11, 21, 31]},
-                "norm_constructor": {"values": ["BatchNorm1d", null]},
-                "spatial_skip_conn": {"values": [true, false]},
-                "channel_skip_conn": {"values": [true, false]}
+                "spatial_kernel_size": {"values": [11, 21, 31, 41, 51]}
+            },
+            "optimizer_kwargs": {
+                "lr": {"values", [
+                       1e-3, 2e-3, 3e-3, 4e-3, 5e-3, 6e-3, 7e-3, 8e-3, 9e-3,
+                       1e-2, 2e-2, 3e-2, 4e-2, 5e-2, 6e-2, 7e-2, 8e-2, 9e-2,
+                       1e-1
+                       ]}
             }
         }
     }

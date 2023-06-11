@@ -1,0 +1,16 @@
+Traceback (most recent call last):
+  File "main.py", line 168, in <module>
+    main()
+  File "main.py", line 163, in main
+    settings = config.load_config(config_name, train=False)
+  File "/local/a/jgammell/dlsca_architecture_comparison/config/__init__.py", line 39, in load_config
+    settings = json.load(F)
+  File "/home/min/a/jgammell/anaconda3/envs/sca_defense/lib/python3.8/json/__init__.py", line 293, in load
+    return loads(fp.read(),
+  File "/home/min/a/jgammell/anaconda3/envs/sca_defense/lib/python3.8/json/__init__.py", line 357, in loads
+    return _default_decoder.decode(s)
+  File "/home/min/a/jgammell/anaconda3/envs/sca_defense/lib/python3.8/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+  File "/home/min/a/jgammell/anaconda3/envs/sca_defense/lib/python3.8/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+json.decoder.JSONDecodeError: Expecting ':' delimiter: line 39 column 32 (char 1056)

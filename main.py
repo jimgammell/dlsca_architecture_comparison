@@ -5,6 +5,7 @@ import copy
 import pickle
 import os
 import traceback
+import torch
 from torch import multiprocessing
 
 import datasets, datasets.test
@@ -40,10 +41,32 @@ def train_classifier(dataset_args, settings, seed=None, device=None):
             for seed_ in seed:
                 run_(seed_, dataset_name)
 
-def htune_classifier(dataset_args, settings, seed=None, device=None, num_agents=1):
-    assert (len(dataset_args)==1) and (len(seed)==1)
+def spawn_agent(sweep_id, device, seed, dataset_name, settings, classifier_settings):
+    wandb.agent(sweep_id, function=lambda: run_wandb_trial_(device, seed, dataset_name, settings, classifier_settings))
+    
+def run_wandb_trial_(device, seed, dataset_name, settings, classifier_settings):
+    try:
+        wandb.init()
+        trial_settings = copy.deepcopy(classifier_settings)
+        wandb_config = dict(wandb.config)
+        wandb_config = config.nest_dict(wandb_config)
+        trial_settings.update(wandb_config)
+        save_dir = config.results_subdir(settings['save_dir'], dataset_name)
+        if len(os.listdir(save_dir)) > 0:
+            save_dir = os.path.join(save_dir, 'trial_%d'%(max(int(f.split('_')[-1]) for f in os.listdir(save_dir))+1))
+        else:
+            save_dir = os.path.join(save_dir, 'trial_0')
+        trainer = train.classifier.ClassifierTrainer(dataset_name, seed=seed, device=device, **trial_settings)
+        trainer.train_model(settings['total_epochs'], results_save_dir=save_dir, compute_max_lr=False, generate_plots=False, report_to_wandb=True)
+    except Exception:
+        traceback.print_exc()
+        raise Exception('Trial code crashed.')
+    
+def htune_classifier(dataset_args, settings, seed_=None, devices='cpu', num_agents=1):
+    assert (len(dataset_args)==1)
     dataset_name = dataset_args[0]
-    seed = seed[0]
+    if not hasattr(devices, '__len__'):
+        devices = [devices]
     wandb_config = settings['wandb_config']
     wandb_config['parameters'] = config.denest_dict(wandb_config['parameters'])
     classifier_settings = {key: val for key, val in settings.items() if key != 'wandb_config'}
@@ -52,39 +75,18 @@ def htune_classifier(dataset_args, settings, seed=None, device=None, num_agents=
         project=settings['save_dir']
     )
     
-    def run_wandb_trial_():
-        try:
-            wandb.init()
-            trial_settings = copy.deepcopy(classifier_settings)
-            wandb_config = dict(wandb.config)
-            wandb_config = config.nest_dict(wandb_config)
-            trial_settings.update(wandb_config)
-            save_dir = config.results_subdir(settings['save_dir'], dataset_name)
-            if len(os.listdir(save_dir)) > 0:
-                save_dir = os.path.join(save_dir, 'trial_%d'%(max(int(f.split('_')[-1]) for f in os.listdir(save_dir))+1))
-            else:
-                save_dir = os.path.join(save_dir, 'trial_0')
-            trainer = train.classifier.ClassifierTrainer(dataset_name, seed=seed, device=device, **trial_settings)
-            trainer.train_model(settings['total_epochs'], results_save_dir=save_dir, compute_max_lr=False, generate_plots=False, report_to_wandb=True)
-        except Exception:
-            traceback.print_exc()
-            raise Exception('Trial code crashed.')
-    
-    def spawn_agent():
-        wandb.agent(sweep_id, function=run_wandb_trial_)
-    
-    if num_agents > 1:
+    config.set_num_agents(num_agents*len(devices))
+    if num_agents*len(devices) == 1:
+        spawn_agent(sweep_id, devices[0], seed_ if seed_ is not None else 0, dataset_name, settings, classifier_settings)
+    else:
         procs = []
-        for _ in range(num_agents):
-            p = multiprocessing.Process(target=spawn_agent)
-            procs.append(p)
-            p.start()
+        for didx, dev in enumerate(devices):
+            for aidx in range(num_agents):
+                p = multiprocessing.Process(target=spawn_agent, args=(sweep_id, dev, seed_ if seed_ is not None else didx*num_agents+aidx, dataset_name, settings, classifier_settings))
+                procs.append(p)
+                p.start()
         for p in procs:
             p.join()
-    elif num_agents == 1:
-        spawn_agent()
-    else:
-        raise NotImplementedError
 
 def main():
     parser = argparse.ArgumentParser()
@@ -116,10 +118,10 @@ def main():
         help='Force the command to take effect.'
     )
     parser.add_argument(
-        '--seed', default=[], type=int, nargs='+', help='Random seed to use in this trial.'
+        '--seed', default=None, type=int, nargs='+', help='Random seed to use in this trial.'
     )
     parser.add_argument(
-        '--device', default=None, help='Device to use for this trial.'
+        '--device', default=None, nargs='+', help='Device to use for this trial.'
     )
     parser.add_argument(
         '--num-epochs', default=None, type=int, help='Number of epochs to train for. Overrides the value specified in the trial configuration file.'
@@ -131,6 +133,17 @@ def main():
         '--save-dir', default=None, type=str, help='Override the results directory specified in the config file with this value.'
     )
     args = parser.parse_args()
+    
+    if args.device is None:
+        if torch.cuda.is_available():
+            devices = ['cuda:%d'%(idx) for idx in range(torch.cuda.device_count())]
+        else:
+            devices = ['cpu']
+    else:
+        devices = args.device
+    
+    if args.force:
+        external_libs.download_external_libs(force=True)
     
     get_datasets(args)
     if args.download:
@@ -145,10 +158,11 @@ def main():
             settings['optimizer_kwargs']['lr'] = args.lr
         if args.save_dir is not None:
             settings['save_dir'] = args.save_dir
-        train_classifier(args.dataset, settings, seed=args.seed, device=args.device)
+        train_classifier(args.dataset, settings, seed=args.seed, device=devices[0])
     for config_name in args.htune_classifier:
         settings = config.load_config(config_name, train=False)
-        htune_classifier(args.dataset, settings, seed=args.seed, device=args.device, num_agents=args.num_wandb_agents)
+        htune_classifier(args.dataset, settings, seed_=args.seed, devices=devices, num_agents=args.num_wandb_agents)
 
 if __name__ == '__main__':
+    multiprocessing.set_start_method('spawn')
     main()

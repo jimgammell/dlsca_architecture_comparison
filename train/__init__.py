@@ -5,6 +5,7 @@ import torch
 from torch import nn
 
 import datasets
+import config
 
 class ResultsDict(dict):
     def append(self, key, value):
@@ -35,13 +36,12 @@ def value(x):
 
 def unpack_batch(batch, device):
     x, y = batch
-    x, y = x.to(device), {key: value.to(device) for key, value in y.items()}
-    #y = {key: nn.functional.one_hot(value, num_classes=256).to(torch.float) for key, value in y.items()}
+    x, y = x.to(device), y.to(device)
     return x, y
 
 def get_dataloader(dataset, batch_size=32, shuffle=False):
     return torch.utils.data.DataLoader(
-        dataset, batch_size=batch_size, shuffle=shuffle, num_workers=multiprocessing.cpu_count()//12, pin_memory=True
+        dataset, batch_size=batch_size, shuffle=shuffle, num_workers=min(1, multiprocessing.cpu_count()//config.get_num_agents()), pin_memory=True
     )
 
 def get_acc(logits, labels):

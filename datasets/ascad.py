@@ -41,12 +41,12 @@ def compute_ascadv1_labels(metadata, bytes, mode='bytes'):
     return labels
 
 class _ASCADBase(torch.utils.data.Dataset):
-    def __init__(self, dataset_name, compressed_filename, desync=0, train=True, transform=None, target_transform=None, truncate_length=None, store_dataset_in_ram=True, smooth_bins=True):
+    def __init__(self, dataset_name, compressed_filename, desync=0, train=True, transform=None, target_transform=None, truncate_length=None, store_dataset_in_ram=True, smooth_bins=False):
         super().__init__()
         
         datasets.check_downloaded(dataset_name)
         self.train = train
-        self.database_file = h5py.File(
+        database_file = h5py.File(
             os.path.join(datasets.get_path(dataset_name), compressed_filename), 'r'
         )
         self.sbox = AES_Sbox
@@ -54,52 +54,40 @@ class _ASCADBase(torch.utils.data.Dataset):
         self.desync = desync
         self.smooth_bins = smooth_bins
         
-        assert len(self.database_file['Profiling_traces/traces']) == len(self.database_file['Profiling_traces/labels']) == len(self.database_file['Profiling_traces/metadata'])
-        assert len(self.database_file['Attack_traces/traces']) == len(self.database_file['Attack_traces/labels']) == len(self.database_file['Attack_traces/metadata'])
-        self.length = len(self.database_file['Profiling_traces/traces']) if train else len(self.database_file['Attack_traces/traces'])
+        assert len(database_file['Profiling_traces/traces']) == len(database_file['Profiling_traces/labels']) == len(database_file['Profiling_traces/metadata'])
+        assert len(database_file['Attack_traces/traces']) == len(database_file['Attack_traces/labels']) == len(database_file['Attack_traces/metadata'])
+        self.length = len(database_file['Profiling_traces/traces']) if train else len(database_file['Attack_traces/traces'])
         if truncate_length is not None:
             assert 0 < truncate_length < self.length
             self.length = truncate_length
-        self.data_shape = (1, self.database_file['Profiling_traces/traces'][0].shape[0])
+        self.data_shape = (1, database_file['Profiling_traces/traces'][0].shape[0])
         self.transform = transform
         self.target_transform = target_transform
         
-        self.index_database = lambda key: self.database_file['/'.join(('Profiling_traces' if self.train else 'Attack_traces', key))]
+        index_database = lambda key: database_file['/'.join(('Profiling_traces' if self.train else 'Attack_traces', key))]
         if store_dataset_in_ram:
-            self.data = np.array(self.index_database('traces'), dtype=np.int8)
-            self.targets = np.array(self.index_database('labels'), dtype=np.uint8)
+            self.data = np.array(index_database('traces'), dtype=np.int8)
+            self.targets = np.array(index_database('labels'), dtype=np.uint8)
             self.metadata = {
-                'plaintext': np.array(self.index_database('metadata')['plaintext'], dtype=np.uint8),
-                'key': np.array(self.index_database('metadata')['key'], dtype=np.uint8),
-                'masks': np.array(self.index_database('metadata')['masks'], dtype=np.uint8)
+                'plaintext': np.array(index_database('metadata')['plaintext'], dtype=np.uint8),
+                'key': np.array(index_database('metadata')['key'], dtype=np.uint8),
+                'masks': np.array(index_database('metadata')['masks'], dtype=np.uint8)
             }
-            self.get_data = lambda idx: self.data[idx]
-            self.get_target = lambda idx: self.targets[idx]
-            self.get_metadata = lambda idx: {key: value[idx] for key, value in self.metadata.items()}
         else:
-            self.get_data = lambda idx: np.array(self.index_database('traces')[idx], dtype=np.int8)
-            self.get_target = lambda idx: np.array(self.index_database('labels')[idx], dtype=np.uint8)
-            self.get_metadata = lambda idx: {
-                'plaintext': np.array(self.index_database('metadata')['plaintext'][idx], dtype=np.uint8),
-                'key': np.array(self.index_database('metadata')['key'][idx], dtype=np.uint8),
-                'masks': np.array(self.index_database('metadata')['masks'][idx], dtype=np.uint8)
-            }
-        self.data_mean = np.mean([self.get_data(idx) for idx in range(self.length)])
-        self.data_stdev = np.std([self.get_data(idx) for idx in range(self.length)])
+            raise NotImplementedError
+        self.data_mean = np.mean(self.data, axis=0, keepdims=True)
+        self.data_stdev = np.std(self.data, axis=0, keepdims=True)
+        self.data = (self.data - self.data_mean) / self.data_stdev
     
     def __getitem__(self, idx):
         idx = idx % self.length
-        data = self.get_data(idx)
-        orig_target = self.get_target(idx)
-        metadata = self.get_metadata(idx)
-        target = self.compute_target(metadata)
-        to_repr = {'bytes': to_byte, 'bits': to_bits, 'hw': to_hw}[self.data_repr]
-        assert target[self.data_repr+'_2'] == to_repr(orig_target)
-        data = (data-self.data_mean)/self.data_stdev
+        data = self.data[idx]
+        target = self.targets[idx]
+        metadata = {key: val[idx] for key, val in self.metadata.items()}
         data = torch.tensor(data, dtype=torch.float).view(*self.data_shape)
+        target = torch.tensor(target, dtype=torch.long)
         if self.smooth_bins:
             data += (torch.rand_like(data)-self.data_mean)/self.data_stdev
-        target = {key: torch.tensor(value, dtype=torch.long).squeeze() for key, value in target.items()}
         if self.transform is not None:
             data = self.transform(data)
         if self.target_transform is not None:
@@ -111,6 +99,9 @@ class _ASCADBase(torch.utils.data.Dataset):
     
     def __len__(self):
         return self.length
+    
+    def compute_target(self, metadata):
+        return compute_ascadv1_labels(metadata, self.bytes, mode=self.data_repr)
     
 class ASCADV1Fixed(_ASCADBase):
     dataset_name = 'ASCAD-V1-Fixed'
@@ -125,7 +116,6 @@ class ASCADV1Fixed(_ASCADBase):
         self.bytes = np.array(bytes)
         self.bytes.sort()
         self.data_repr = data_repr
-        self.compute_target = lambda metadata: compute_ascadv1_labels(metadata, self.bytes, mode=self.data_repr)
         self.trace_range = (-66.0, 47.0)
 
 class ASCADV1Fixed_DS50(_ASCADBase):
@@ -141,7 +131,6 @@ class ASCADV1Fixed_DS50(_ASCADBase):
         self.bytes = np.array(bytes)
         self.bytes.sort()
         self.data_repr = data_repr
-        self.compute_target = lambda metadata: compute_ascadv1_labels(metadata, self.bytes, mode=self.data_repr)
         self.trace_range = (-66.0, 47.0)
 
 class ASCADV1Fixed_DS100(_ASCADBase):
@@ -157,7 +146,6 @@ class ASCADV1Fixed_DS100(_ASCADBase):
         self.bytes = np.array(bytes)
         self.bytes.sort()
         self.data_repr = data_repr
-        self.compute_target = lambda metadata: compute_ascadv1_labels(metadata, self.bytes, mode=self.data_repr)
         self.trace_range = (-66.0, 47.0)
     
 class ASCADV1Variable(_ASCADBase):

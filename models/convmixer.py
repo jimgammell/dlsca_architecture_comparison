@@ -9,10 +9,9 @@ class ConvMixer(nn.Module):
     def __init__(
         self,
         input_shape,
-        head_sizes,
         depth=8,
         patch_length=50,
-        spatial_kernel_size=3,
+        spatial_kernel_size=11,
         hidden_channels=256,
         spatial_skip_conn=True,
         channel_skip_conn=False,
@@ -88,14 +87,11 @@ class ConvMixer(nn.Module):
             ) for layer_idx in range(depth)
         ]))
         
-        self.pooling = nn.Sequential(OrderedDict([
+        self.head = nn.Sequential(OrderedDict([
             ('pool', nn.AdaptiveAvgPool1d(1)),
-            ('flatten', nn.Flatten())
+            ('flatten', nn.Flatten()),
+            ('dense', nn.Linear(hidden_channels, 256))
         ]))
-        
-        self.heads = nn.ModuleDict({
-            head_key: nn.Linear(hidden_channels, head_size) for head_key, head_size in head_sizes.items()
-        })
         
         def init_weights(mod):
             if isinstance(mod, (nn.Linear, nn.Conv1d)):
@@ -110,8 +106,7 @@ class ConvMixer(nn.Module):
         x = self.patch_embedding(x)
         x = self.pre_mixer(x)
         x = self.mixer(x)
-        x = self.pooling(x)
-        x = {head_name: head(x) for head_name, head in self.heads.items()}
+        x = self.head(x)
         return x
 
 def main():
@@ -126,7 +121,7 @@ def main():
     print(model)
     eg_input = torch.randn(batch_size, *input_shape)
     eg_output = model(eg_input)
-    print('ConvMixer: {} -> {}'.format(eg_input.shape, {name: output.shape for name, output in eg_output.items()}))
+    print('ConvMixer: {} -> {}'.format(eg_input.shape, eg_output.shape))
     
 if __name__ == '__main__':
     main()

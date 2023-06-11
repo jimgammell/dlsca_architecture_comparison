@@ -6,6 +6,16 @@ import random
 import numpy as np
 import torch
 
+NUM_AGENTS = 1
+
+def set_num_agents(val):
+    global NUM_AGENTS
+    NUM_AGENTS = val
+
+def get_num_agents():
+    global NUM_AGENTS
+    return NUM_AGENTS
+
 def results_subdir(*subdir_names):
     path = os.path.join('.', 'results', *subdir_names)
     os.makedirs(path, exist_ok=True)
