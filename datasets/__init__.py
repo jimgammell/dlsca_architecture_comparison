@@ -1,23 +1,36 @@
 import os
 import time
-import gdown
+import requests
+from tqdm import tqdm
 import shutil
 import zipfile
+import numpy as np
 from collections import OrderedDict
-from datasets.ascad import ASCADV1Fixed, ASCADV1Fixed_DS50, ASCADV1Fixed_DS100, ASCADV1Variable, ASCADV2
+from datasets.ascad import ASCADV1Fixed, ASCADV1Fixed_DS50, ASCADV1Fixed_DS100, ASCADV1Variable, ASCADV1Variable_DS50, ASCADV1Variable_DS100, ASCADV2
 from datasets.aes_rd import AES_RD
 
 AVAILABLE_DATASETS = OrderedDict([
     (dataset_class.dataset_name, dataset_class)
-    for dataset_class in [ASCADV1Fixed, ASCADV1Fixed_DS50, ASCADV1Fixed_DS100, ASCADV1Variable]
+    for dataset_class in [ASCADV1Fixed, ASCADV1Fixed_DS50, ASCADV1Fixed_DS100, ASCADV1Variable, ASCADV1Variable_DS50, ASCADV1Variable_DS100]
 ])
 
 def get_available_datasets():
     return list(AVAILABLE_DATASETS.keys())
 
-def download_file(url, dest, force=False):
+def download_file(url, dest, force=False, chunk_size=2**20):
     if force or not(os.path.exists(dest)):
-        gdown.download(url, dest, quiet=False)
+        if os.path.exists(dest):
+            os.remove(dest)
+        print('Downloading {} to {} ...'.format(url, dest))
+        response = requests.get(url, stream=True)
+        with open(dest, 'wb') as F:
+            for data in tqdm(
+                response.iter_content(chunk_size=chunk_size),
+                total=int(np.ceil(int(response.headers['Content-length'])/chunk_size)),
+                unit='MB'
+            ):
+                F.write(data)
+        print()
 
 def unzip_file(src, dest, member=None, remove=True):
     try:

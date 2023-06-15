@@ -41,8 +41,8 @@ def train_classifier(dataset_args, settings, seed=None, device=None):
             for seed_ in seed:
                 run_(seed_, dataset_name)
 
-def spawn_agent(sweep_id, device, seed, dataset_name, settings, classifier_settings):
-    wandb.agent(sweep_id, function=lambda: run_wandb_trial_(device, seed, dataset_name, settings, classifier_settings))
+def spawn_agent(sweep_id, project, device, seed, dataset_name, settings, classifier_settings):
+    wandb.agent(sweep_id, project=project, function=lambda: run_wandb_trial_(device, seed, dataset_name, settings, classifier_settings))
     
 def run_wandb_trial_(device, seed, dataset_name, settings, classifier_settings):
     try:
@@ -50,7 +50,11 @@ def run_wandb_trial_(device, seed, dataset_name, settings, classifier_settings):
         trial_settings = copy.deepcopy(classifier_settings)
         wandb_config = dict(wandb.config)
         wandb_config = config.nest_dict(wandb_config)
-        trial_settings.update(wandb_config)
+        for wc_key, wc_val in wandb_config.items():
+            if (wc_key in trial_settings.keys()) and (type(wc_val) == dict):
+                trial_settings[wc_key].update(wc_val)
+            else:
+                trial_settings[wc_key] = wc_val
         save_dir = config.results_subdir(settings['save_dir'], dataset_name)
         if len(os.listdir(save_dir)) > 0:
             save_dir = os.path.join(save_dir, 'trial_%d'%(max(int(f.split('_')[-1]) for f in os.listdir(save_dir))+1))
@@ -70,10 +74,13 @@ def htune_classifier(dataset_args, settings, seed_=None, devices='cpu', num_agen
     wandb_config = settings['wandb_config']
     wandb_config['parameters'] = config.denest_dict(wandb_config['parameters'])
     classifier_settings = {key: val for key, val in settings.items() if key != 'wandb_config'}
-    sweep_id = wandb.sweep(
-        sweep=wandb_config,
-        project=settings['save_dir']
-    )
+    if 'sweep_id' in settings:
+        sweep_id = settings['sweep_id']
+    else:
+        sweep_id = wandb.sweep(
+            sweep=wandb_config,
+            project=settings['save_dir']
+        )
     
     config.set_num_agents(num_agents*len(devices))
     if num_agents*len(devices) == 1:
@@ -82,7 +89,7 @@ def htune_classifier(dataset_args, settings, seed_=None, devices='cpu', num_agen
         procs = []
         for didx, dev in enumerate(devices):
             for aidx in range(num_agents):
-                p = multiprocessing.Process(target=spawn_agent, args=(sweep_id, dev, seed_ if seed_ is not None else didx*num_agents+aidx, dataset_name, settings, classifier_settings))
+                p = multiprocessing.Process(target=spawn_agent, args=(sweep_id, settings['save_dir'], dev, seed_ if seed_ is not None else didx*num_agents+aidx, dataset_name, settings, classifier_settings))
                 procs.append(p)
                 p.start()
         for p in procs:

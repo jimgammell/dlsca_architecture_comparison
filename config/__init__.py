@@ -59,7 +59,7 @@ def denest_dict(d, delim='-'):
         raise Exception('Delimiter character \'{}\' is used in one or more dictionary keys: \'{}\''.format(
             delim, '\', \''.join(list(d.keys()))))
     for key, val in copy.deepcopy(d).items():
-        if type(val) == dict:
+        if type(val) == dict and any(type(subval) == dict for subval in val.values()):
             for subkey, subval in val.items():
                 d[delim.join((key, subkey))] = subval
             del d[key]

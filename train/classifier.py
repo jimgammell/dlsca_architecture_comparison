@@ -1,6 +1,7 @@
 from collections import OrderedDict
 import os
 import time
+import copy
 import pickle
 import numpy as np
 import wandb
@@ -13,6 +14,7 @@ import torchvision
 import config
 import datasets
 import train
+from train import transforms
 import models
 from external_libs.sam import SAM
 from external_libs.temperature_scaling import ModelWithTemperature
@@ -39,10 +41,12 @@ class ClassifierTrainer:
         seed=None,
         device=None,
         batch_size=32,
+        random_erasing_prob=0.0,
+        random_crop_size=0,
         update_bn_steps=0,
         val_split_size=5000,
-        n_test_traces=10000,
-        final_evaluation_repetitions=1,
+        n_test_traces=1000,
+        final_evaluation_repetitions=100,
         selection_metric=None,
         maximize_selection_metric=True,
         training_set_truncate_length=None, # Number of training datapoints to include,
@@ -86,11 +90,27 @@ class ClassifierTrainer:
         train_dataset, val_dataset = torch.utils.data.random_split(
             train_dataset, (len(train_dataset)-val_split_size, val_split_size)
         )
+        val_dataset = copy.deepcopy(val_dataset)
+        train_transforms = []
+        if random_crop_size > 0:
+            train_transforms.append(transforms.RandomCrop(random_crop_size))
+        if gaussian_input_noise_stdev > 0.0:
+            train_transforms.append(transforms.AddNoise(gaussian_input_noise_stdev))
+        if random_erasing_prob > 0.0:
+            train_transforms.append(transforms.RandomErasing(p=random_erasing_prob))
+        train_transforms = torchvision.transforms.Compose(train_transforms)
+        train_target_transforms = []
+        train_target_transforms.append(transforms.ToOneHot())
+        if label_smoothing:
+            train_target_transforms.append(transforms.LabelSmoothing())
+        train_target_transforms = torchvision.transforms.Compose(train_target_transforms)
+        train_dataset.dataset.transform = train_transforms
+        train_dataset.dataset.target_transform = train_target_transforms
         
         self.batch_size = batch_size
         self.get_train_dataloader = lambda: train.get_dataloader(train_dataset, shuffle=True, batch_size=self.batch_size)
         self.get_val_dataloader = lambda: train.get_dataloader(val_dataset, shuffle=False, batch_size=batch_size)
-        self.get_test_dataloader = lambda: train.get_dataloader(test_dataset, shuffle=False, batch_size=batch_size)
+        self.get_test_dataloader = lambda: train.get_dataloader(test_dataset, shuffle=True, batch_size=batch_size)
         #   Shuffling test dataloader so it's easier to do the final evaluation with different subsets of traces
         
         model_class = models.get_class(model_name)
@@ -111,7 +131,7 @@ class ClassifierTrainer:
                 self.input_shape, **self.model_kwargs
             ).to(self.device), device=self.device)
         else:
-            self.get_model = lambda: model_class(self.input_shape, self.model_heads, **self.model_kwargs).to(self.device)
+            self.get_model = lambda: model_class(self.input_shape, **self.model_kwargs).to(self.device)
         if use_sam:
             self.get_optimizer = lambda: SAM(self.model.parameters(), optimizer_class, **self.optimizer_kwargs, **self.sam_kwargs)
         else:
@@ -141,38 +161,35 @@ class ClassifierTrainer:
         return {}
     
     def train_step(self, batch):
+        print('a')
+        t0 = time.time()
         rv = train.ResultsDict()
         self.model.train()
         traces, labels = train.unpack_batch(batch, self.device)
-        if self.gaussian_input_noise_stdev > 0:
-            traces += self.gaussian_input_noise_stdev * torch.randn_like(traces)
         if self.mixup_alpha > 0:
             indices = torch.randperm(traces.size(0), device=self.device, dtype=torch.long)
-            mu_lambda = np.random.beta(self.mixup_alpha, self.mixup_alpha)
+            mu_lambda = np.random.beta(self.mixup_alpha, self.mixup_alpha, size=(traces.size(0), 1, 1))
             traces = mu_lambda*traces + (1-mu_lambda)*traces[indices]
-        if self.label_smoothing:
-            labels = 0.9*labels + 0.1*torch.ones_like(labels)/(labels.size(-1)-1)
+            labels = mu_lambda*labels + (1-mu_lambda)*labels[indices]
+        print('b')
         def closure(update_rv=False):
             nonlocal rv
             logits = self.model(traces)
             total_loss = 0.0
-            if self.mixup_alpha > 0:
-                loss = mu_lamvda*self.loss_fn(logits, labels) + (1-mu_lambda)*self.loss_fn(logits, labels[indices])
-            else:
-                loss = self.loss_fn(logits, labels)
+            loss = self.loss_fn(logits, labels)
             if update_rv:
                 rv['loss'] = train.value(loss)
                 for metric_name, metric_fn in self.train_metrics.items():
                     rv[metric_name] = metric_fn(logits, labels)
-            if self.l1_weight_penalty > 0:
-                loss += self.l1_weight_penalty * sum(p.norm(p=1) for p in self.model.parameters())
             loss.backward()
+            print('c')
             return loss
         self.optimizer.zero_grad(set_to_none=True)
         loss = closure(update_rv=True)
         norms = train.get_norms(self.model)
         rv['weight_norm'] = norms['weight_norm']
         rv['grad_norm'] = norms['grad_norm']
+        print('d')
         if self.use_sam:
             self.optimizer.step(closure)
         else:
@@ -183,6 +200,7 @@ class ClassifierTrainer:
             rv['lr'] = self.scheduler.get_last_lr()
         else:
             rv['lr'] = [g['lr'] for g in self.optimizer.param_groups][0]
+        print(time.time()-t0)
         return rv
     
     @torch.no_grad()
@@ -207,7 +225,8 @@ class ClassifierTrainer:
     
     def train_epoch(self, dataloader, **kwargs):
         rv = train.run_epoch(dataloader, self.train_step, **kwargs)
-        self.model.set_temperature(self.val_dataloader)
+        if hasattr(self.model, 'set_temperature'):
+            self.model.set_temperature(self.val_dataloader)
         return rv
     
     def eval_epoch(self, dataloader, **kwargs):
@@ -263,15 +282,19 @@ class ClassifierTrainer:
             
         sorted_keys = np.argsort(-cum_log_prob, axis=1)
         key_ranks = np.zeros((n_samples,), dtype=int) - 1
+        traces_to_disclosure = np.nan
         for sidx in range(n_samples):
             for cidx in range(n_classes):
                 if sorted_keys[sidx, cidx] == aes_keys[sidx]:
                     key_ranks[sidx] = cidx
+                    if cidx == 0 and np.isnan(traces_to_disclosure):
+                        traces_to_disclosure = sidx
                     break
         if return_full_trace:
             rv.update({'full_trace': key_ranks})
         rv.update({'mean_rank': np.mean(key_ranks)})
         rv.update({'final_rank': key_ranks[-1]})
+        rv.update({'traces_to_disclosure': traces_to_disclosure})
         return rv
     
     def train_model(self, epochs, results_save_dir=None, model_save_dir=None, compute_max_lr=True, generate_plots=True, report_to_wandb=False):
@@ -305,7 +328,7 @@ class ClassifierTrainer:
             val_brv = self.eval_epoch(self.val_dataloader)
             val_rv.update(val_brv)
             t0 = time.time()
-            test_brv = [self.evaluate_model(truncate_at_sample=self.n_test_traces) for _ in range(self.final_evaluation_repetitions)]
+            test_brv = [self.evaluate_model(truncate_at_sample=self.n_test_traces) for _ in range(1)]#range(self.final_evaluation_repetitions)]
             test_brv = {key: np.mean([val[key] for val in test_brv]) for key in test_brv[0].keys()}
             test_rv.update(test_brv)
             if report_to_wandb:
@@ -361,6 +384,11 @@ class ClassifierTrainer:
                 if not key in test_final_rv.keys():
                     test_final_rv[key] = []
                 test_final_rv[key].append(val)
+        if report_to_wandb:
+            wandb.run.summary.update({'best_epoch': epoch})
+            wandb.run.summary.update({'best_train_'+k: v for k, v in train_final_rv.items()})
+            wandb.run.summary.update({'best_val_'+k: v for k, v in val_final_rv.items()})
+            wandb.run.summary.update({'best_test_'+k: v for k, v in test_final_rv.items()})
         
         if results_save_dir is not None:
             os.makedirs(os.path.join(results_save_dir, 'intermediate_results'), exist_ok=True)

@@ -1,10 +1,10 @@
 {
-    "save_dir": "convmixer_htune__tighter_sweep",
+    "sweep_id": "ywp9b6yc",
+    "save_dir": "convmixer_htune__architecture_size_sweep",
     "model_name": "ConvMixer",
     "model_kwargs": {
-        "depth": 2,
-        "hidden_channels": 256,
-        "patch_length": 51
+        "patch_length": 51,
+        "spatial_kernel_size": 31
     },
     "loss_fn_class": "CrossEntropyLoss",
     "loss_fn_kwargs": {},
@@ -32,15 +32,14 @@
         "method": "grid",
         "name": "convmixer",
         "parameters": {
-            "model_kwargs": {
-                "spatial_kernel_size": {"values": [11, 21, 31, 41, 51]}
-            },
             "optimizer_kwargs": {
-                "lr": {"values", [
-                       1e-3, 2e-3, 3e-3, 4e-3, 5e-3, 6e-3, 7e-3, 8e-3, 9e-3,
-                       1e-2, 2e-2, 3e-2, 4e-2, 5e-2, 6e-2, 7e-2, 8e-2, 9e-2,
-                       1e-1
-                       ]}
+                "lr": {"values": [1e-2, 2e-2, 3e-2, 4e-2]}
+            },
+            "model_kwargs": {
+                "depth": {"values": [0, 1, 2, 3]},
+                "hidden_channels": {"values": [32, 64, 128, 256]},
+                "spatial_skip_conn": {"values": [true, false]},
+                "channel_skip_conn": {"values": [true, false]}
             }
         }
     }

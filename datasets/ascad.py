@@ -75,8 +75,8 @@ class _ASCADBase(torch.utils.data.Dataset):
             }
         else:
             raise NotImplementedError
-        self.data_mean = np.mean(self.data, axis=0, keepdims=True)
-        self.data_stdev = np.std(self.data, axis=0, keepdims=True)
+        self.data_mean = np.mean(self.data)
+        self.data_stdev = np.std(self.data)
         self.data = (self.data - self.data_mean) / self.data_stdev
     
     def __getitem__(self, idx):
@@ -160,7 +160,35 @@ class ASCADV1Variable(_ASCADBase):
         self.bytes = np.array(bytes)
         self.bytes.sort()
         self.data_repr = data_repr
-        self.compute_target = lambda metadata: compute_ascadv1_labels(metadata, self.bytes, mode=self.data_repr)
+        #self.compute_target = lambda metadata: compute_ascadv1_labels(metadata, self.bytes, mode=self.data_repr)
+
+class ASCADV1Variable_DS50(_ASCADBase):
+    dataset_name = 'ASCAD-V1-Variable-DS50'
+    download_url = r'https://static.data.gouv.fr/resources/ascad-atmega-8515-variable-key/20190903-084119/ascad-variable-desync50.h5'
+    compressed_filename = r'ascadv1-variable-ds50.h5'
+    
+    def __init__(self, bytes=None, data_repr='bytes', **kwargs):
+        super().__init__(self.__class__.dataset_name, self.__class__.compressed_filename, **kwargs)
+        if bytes is None:
+            bytes = np.arange(16)
+        self.bytes = np.array(bytes)
+        self.bytes.sort()
+        self.data_repr = data_repr
+        #self.compute_target = lambda metadata: compute_ascadv1_labels(metadata, self.bytes, mode=self.data_repr)
+
+class ASCADV1Variable_DS100(_ASCADBase):
+    dataset_name = 'ASCAD-V1-Variable-DS100'
+    download_url = r'https://static.data.gouv.fr/resources/ascad-atmega-8515-variable-key/20190903-083349/ascad-variable-desync100.h5'
+    compressed_filename = r'ascadv1-variable-ds100.h5'
+    
+    def __init__(self, bytes=None, data_repr='bytes', **kwargs):
+        super().__init__(self.__class__.dataset_name, self.__class__.compressed_filename, **kwargs)
+        if bytes is None:
+            bytes = np.arange(16)
+        self.bytes = np.array(bytes)
+        self.bytes.sort()
+        self.data_repr = data_repr
+        #self.compute_target = lambda metadata: compute_ascadv1_labels(metadata, self.bytes, mode=self.data_repr)
 
 class ASCADV2(_ASCADBase):
     dataset_name = 'ASCAD-V2'

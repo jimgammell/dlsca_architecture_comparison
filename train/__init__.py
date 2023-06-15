@@ -45,14 +45,23 @@ def get_dataloader(dataset, batch_size=32, shuffle=False):
     )
 
 def get_acc(logits, labels):
-    if isinstance(logits, torch.Tensor):
-        logits = value(logits)
-    if isinstance(labels, torch.Tensor):
-        labels = value(labels)
-    predictions = np.argmax(logits, axis=-1)
-    if labels.ndim > 1:
-        labels = np.argmax(labels, axis=-1)
-    acc = np.mean(np.equal(predictions, labels))
+    if labels.shape == logits.shape:
+        if not isinstance(logits, torch.Tensor):
+            logits = torch.tensor(logits)
+        if not isinstance(labels, torch.Tensor):
+            labels = torch.tensor(labels)
+        predictions = nn.functional.softmax(logits, dim=-1)
+        acc = (predictions*labels).sum(dim=-1).mean()
+        acc = value(acc)
+    else:
+        if isinstance(logits, torch.Tensor):
+            logits = value(logits)
+        if isinstance(labels, torch.Tensor):
+            labels = value(labels)
+        predictions = np.argmax(logits, axis=-1)
+        if labels.ndim > 1:
+            labels = np.argmax(labels, axis=-1)
+        acc = np.mean(np.equal(predictions, labels))
     return acc
 
 def get_soft_acc(logits, labels):
@@ -93,6 +102,8 @@ def run_epoch(dataloader, step_fn, *step_args, truncate_steps=None, average_batc
     if truncate_steps is not None:
         assert 0 <= truncate_steps <= len(dataloader)
     for bidx, batch in enumerate(dataloader):
+        if (bidx % len(dataloader)//10) == 0:
+            print(bidx, 'batches complete')
         step_rv = step_fn(batch, *step_args, **step_kwargs)
         rv.update(step_rv)
         if truncate_steps is not None and bidx >= truncate_steps:
