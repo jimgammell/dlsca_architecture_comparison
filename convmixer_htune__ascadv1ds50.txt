@@ -1,0 +1,872 @@
+Create sweep with ID: 8mhpowwr
+Sweep URL: https://wandb.ai/jgammell/convmixer_htune__vds50/sweeps/8mhpowwr
+wandb: Agent Starting Run: asdtyfmq with config:
+wandb: 	scheduler_kwargs-max_lr: 0.0014523458194551214
+wandb: Agent Starting Run: 5kcu1ven with config:
+wandb: 	scheduler_kwargs-max_lr: 0.0010860665501853954
+wandb: Agent Starting Run: sq7yvanw with config:
+wandb: 	scheduler_kwargs-max_lr: 0.0009042508613844716
+wandb: Currently logged in as: jgammell. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: jgammell. Use `wandb login --relogin` to force relogin
+wandb: Currently logged in as: jgammell. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.15.4
+wandb: Run data is saved locally in /local/a/jgammell/dlsca_architecture_comparison/wandb/run-20230617_145836-asdtyfmq
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run dulcet-sweep-1
+wandb: ⭐️ View project at https://wandb.ai/jgammell/convmixer_htune__vds50
+wandb: 🧹 View sweep at https://wandb.ai/jgammell/convmixer_htune__vds50/sweeps/8mhpowwr
+wandb: 🚀 View run at https://wandb.ai/jgammell/convmixer_htune__vds50/runs/asdtyfmq
+wandb: Tracking run with wandb version 0.15.4
+wandb: Run data is saved locally in /local/a/jgammell/dlsca_architecture_comparison/wandb/run-20230617_145837-sq7yvanw
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run copper-sweep-3
+wandb: ⭐️ View project at https://wandb.ai/jgammell/convmixer_htune__vds50
+wandb: 🧹 View sweep at https://wandb.ai/jgammell/convmixer_htune__vds50/sweeps/8mhpowwr
+wandb: 🚀 View run at https://wandb.ai/jgammell/convmixer_htune__vds50/runs/sq7yvanw
+wandb: Tracking run with wandb version 0.15.4
+wandb: Run data is saved locally in /local/a/jgammell/dlsca_architecture_comparison/wandb/run-20230617_145836-5kcu1ven
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run misunderstood-sweep-2
+wandb: ⭐️ View project at https://wandb.ai/jgammell/convmixer_htune__vds50
+wandb: 🧹 View sweep at https://wandb.ai/jgammell/convmixer_htune__vds50/sweeps/8mhpowwr
+wandb: 🚀 View run at https://wandb.ai/jgammell/convmixer_htune__vds50/runs/5kcu1ven
+<torch.optim.lr_scheduler.OneCycleLR object at 0x7fa458267d90>
+{'pct_start': 0.025, 'anneal_strategy': 'cos', 'cycle_momentum': False, 'div_factor': 1000000.0, 'final_div_factor': 1.0, 'max_lr': 0.0010860665501853954}
+Training classifier...
+ModelWithTemperature(
+  (model): ConvMixer(
+    (patch_embedding): Sequential(
+      (conv): Conv1d(1, 256, kernel_size=(9,), stride=(9,), padding=(4,))
+    )
+    (pre_mixer): Sequential(
+      (act): GELU(approximate='none')
+      (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    )
+    (mixer): Sequential(
+      (layer_0): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_1): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_2): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_3): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_4): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_5): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_6): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_7): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_8): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_9): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_10): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_11): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_12): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_13): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_14): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+    )
+    (head): Sequential(
+      (pool): AdaptiveAvgPool1d(output_size=1)
+      (flatten): Flatten(start_dim=1, end_dim=-1)
+      (dense): Linear(in_features=256, out_features=256, bias=True)
+    )
+  )
+)
+Number of parameters: 1109505
+<torch.optim.lr_scheduler.OneCycleLR object at 0x7fcb38295d30>
+{'pct_start': 0.025, 'anneal_strategy': 'cos', 'cycle_momentum': False, 'div_factor': 1000000.0, 'final_div_factor': 1.0, 'max_lr': 0.0014523458194551214}
+Training classifier...
+ModelWithTemperature(
+  (model): ConvMixer(
+    (patch_embedding): Sequential(
+      (conv): Conv1d(1, 256, kernel_size=(9,), stride=(9,), padding=(4,))
+    )
+    (pre_mixer): Sequential(
+      (act): GELU(approximate='none')
+      (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    )
+    (mixer): Sequential(
+      (layer_0): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_1): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_2): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_3): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_4): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_5): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_6): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_7): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_8): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_9): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_10): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_11): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_12): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_13): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_14): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+    )
+    (head): Sequential(
+      (pool): AdaptiveAvgPool1d(output_size=1)
+      (flatten): Flatten(start_dim=1, end_dim=-1)
+      (dense): Linear(in_features=256, out_features=256, bias=True)
+    )
+  )
+)
+Number of parameters: 1109505
+<torch.optim.lr_scheduler.OneCycleLR object at 0x7fd643043a30>
+{'pct_start': 0.025, 'anneal_strategy': 'cos', 'cycle_momentum': False, 'div_factor': 1000000.0, 'final_div_factor': 1.0, 'max_lr': 0.0009042508613844716}
+Training classifier...
+ModelWithTemperature(
+  (model): ConvMixer(
+    (patch_embedding): Sequential(
+      (conv): Conv1d(1, 256, kernel_size=(9,), stride=(9,), padding=(4,))
+    )
+    (pre_mixer): Sequential(
+      (act): GELU(approximate='none')
+      (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+    )
+    (mixer): Sequential(
+      (layer_0): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_1): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_2): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_3): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_4): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_5): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_6): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_7): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_8): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_9): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_10): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_11): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_12): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_13): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+      (layer_14): Sequential(
+        (spatial_mixer): SpatialMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(9,), stride=(1,), padding=(4,), groups=256)
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+        (channel_mixer): ChannelMixer(
+          (model): Sequential(
+            (conv): Conv1d(256, 256, kernel_size=(1,), stride=(1,))
+            (act): GELU(approximate='none')
+            (norm): BatchNorm(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          )
+        )
+      )
+    )
+    (head): Sequential(
+      (pool): AdaptiveAvgPool1d(output_size=1)
+      (flatten): Flatten(start_dim=1, end_dim=-1)
+      (dense): Linear(in_features=256, out_features=256, bias=True)
+    )
+  )
+)
+Number of parameters: 1109505
+Before temperature - NLL: 5.563, ECE: 0.004
+Optimal temperature: 1.756
+After temperature - NLL: 5.550, ECE: 0.003
+Before temperature - NLL: 5.563, ECE: 0.004
+Optimal temperature: 1.757
+After temperature - NLL: 5.551, ECE: 0.002
+Before temperature - NLL: 5.563, ECE: 0.004
+Optimal temperature: 1.500
+After temperature - NLL: 5.553, ECE: 0.003
+New best model found.
+Epoch 1 completed.
+train loss: 5.567974691917245
+train acc: 0.06801177195272086
+train rank: 127.66952494111709
+train weight_norm: 155.98294445895183
+train grad_norm: 5.79352432309868
+train lr: 7.6391774135949e-06
+val loss: 5.551124167442322
+val acc: 0.002734375
+val rank: 127.3583984375
+test mean_rank: 108.353
+test final_rank: 129.7
+test traces_to_disclosure: nan
+
+New best model found.
+Epoch 1 completed.
+train loss: 5.567989491197014
+train acc: 0.068011516817967
+train rank: 127.67952276805741
+train weight_norm: 155.9829505532854
+train grad_norm: 5.795239367136419
+train lr: 5.712589211672662e-06
+val loss: 5.551143109798431
+val acc: 0.00283203125
+val rank: 127.42451171875
+test mean_rank: 108.8844
+test final_rank: 130.0
+test traces_to_disclosure: nan
+
+New best model found.
+Epoch 1 completed.
+train loss: 5.568008684694847
+train acc: 0.06801021711783005
+train rank: 127.69089102456259
+train weight_norm: 155.98295360583475
+train grad_norm: 5.795464134441603
+train lr: 4.7562589184877766e-06
+val loss: 5.553337502479553
+val acc: 0.00283203125
+val rank: 127.34697265625
+test mean_rank: 108.70039999999999
+test final_rank: 129.8
+test traces_to_disclosure: nan
+

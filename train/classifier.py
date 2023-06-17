@@ -32,6 +32,8 @@ class ClassifierTrainer:
         l1_weight_penalty=0.0,
         gaussian_input_noise_stdev=0.0,
         mixup_alpha=0.0,
+        cutmix_prob=0.0,
+        cutmix_beta=1.0,
         rescale_temperature=False,
         label_smoothing=False,
         loss_fn_class=nn.BCELoss,
@@ -46,7 +48,7 @@ class ClassifierTrainer:
         update_bn_steps=0,
         val_split_size=5000,
         n_test_traces=1000,
-        final_evaluation_repetitions=100,
+        final_evaluation_repetitions=10,
         selection_metric=None,
         maximize_selection_metric=True,
         training_set_truncate_length=None, # Number of training datapoints to include,
@@ -78,6 +80,8 @@ class ClassifierTrainer:
         self.selection_metric = selection_metric
         self.maximize_selection_metric = maximize_selection_metric
         self.mixup_alpha = mixup_alpha
+        self.cutmix_prob = cutmix_prob
+        self.cutmix_beta = cutmix_beta
         self.label_smoothing = label_smoothing
         
         dataset_class = datasets.get_class(dataset_name)
@@ -139,7 +143,7 @@ class ClassifierTrainer:
         if (scheduler_class is None) or (scheduler_class == 'none'):
             self.get_scheduler = None
         else:
-            self.get_scheduler = lambda n_epochs: scheduler_class(self.optimizer, n_epochs*len(self.train_dataloader), **self.scheduler_kwargs)
+            self.get_scheduler = lambda n_epochs: scheduler_class(self.optimizer, total_steps=n_epochs*len(self.train_dataloader), **self.scheduler_kwargs)
         if label_smoothing:
             self.loss_fn_kwargs['label_smoothing'] = 0.1
         self.get_loss_fn = lambda: loss_fn_class(**self.loss_fn_kwargs)
@@ -161,17 +165,25 @@ class ClassifierTrainer:
         return {}
     
     def train_step(self, batch):
-        print('a')
         t0 = time.time()
         rv = train.ResultsDict()
         self.model.train()
         traces, labels = train.unpack_batch(batch, self.device)
-        if self.mixup_alpha > 0:
+        
+        if np.random.rand() < self.cutmix_prob:
+            lbd = np.random.beta(self.cutmix_beta, self.cutmix_beta)
+            cut_length = int(traces.size(2)*lbd)
+            start_idx = np.random.randint(traces.size(2)-cut_length)
+            end_idx = start_idx + cut_length
             indices = torch.randperm(traces.size(0), device=self.device, dtype=torch.long)
-            mu_lambda = np.random.beta(self.mixup_alpha, self.mixup_alpha, size=(traces.size(0), 1, 1))
+            traces[:, :, start_idx:end_idx] = traces[indices, :, start_idx:end_idx]
+            labels = (1-lbd)*labels + lbd*labels[indices]
+        elif self.mixup_alpha > 0:
+            indices = torch.randperm(traces.size(0), device=self.device, dtype=torch.long)
+            mu_lambda = np.random.beta(self.mixup_alpha, self.mixup_alpha)
             traces = mu_lambda*traces + (1-mu_lambda)*traces[indices]
             labels = mu_lambda*labels + (1-mu_lambda)*labels[indices]
-        print('b')
+        
         def closure(update_rv=False):
             nonlocal rv
             logits = self.model(traces)
@@ -182,14 +194,12 @@ class ClassifierTrainer:
                 for metric_name, metric_fn in self.train_metrics.items():
                     rv[metric_name] = metric_fn(logits, labels)
             loss.backward()
-            print('c')
             return loss
         self.optimizer.zero_grad(set_to_none=True)
         loss = closure(update_rv=True)
         norms = train.get_norms(self.model)
         rv['weight_norm'] = norms['weight_norm']
         rv['grad_norm'] = norms['grad_norm']
-        print('d')
         if self.use_sam:
             self.optimizer.step(closure)
         else:
@@ -200,7 +210,6 @@ class ClassifierTrainer:
             rv['lr'] = self.scheduler.get_last_lr()
         else:
             rv['lr'] = [g['lr'] for g in self.optimizer.param_groups][0]
-        print(time.time()-t0)
         return rv
     
     @torch.no_grad()
@@ -310,6 +319,10 @@ class ClassifierTrainer:
                 self.scheduler_kwargs['final_div_factor'] = max_lr/min_lr
         
         self.reset(epochs)
+        
+        print(self.scheduler)
+        print(self.scheduler_kwargs)
+        
         train_rv, test_rv = train.ResultsDict(), train.ResultsDict()
         if self.val_dataloader is not None:
             val_rv = train.ResultsDict()
@@ -328,7 +341,7 @@ class ClassifierTrainer:
             val_brv = self.eval_epoch(self.val_dataloader)
             val_rv.update(val_brv)
             t0 = time.time()
-            test_brv = [self.evaluate_model(truncate_at_sample=self.n_test_traces) for _ in range(1)]#range(self.final_evaluation_repetitions)]
+            test_brv = [self.evaluate_model(truncate_at_sample=self.n_test_traces) for _ in range(self.final_evaluation_repetitions)]
             test_brv = {key: np.mean([val[key] for val in test_brv]) for key in test_brv[0].keys()}
             test_rv.update(test_brv)
             if report_to_wandb:
@@ -378,12 +391,8 @@ class ClassifierTrainer:
                     print(' ({} -- {})'.format(min(vals), max(vals)))
                 else:
                     print()
-        for repetition in range(self.final_evaluation_repetitions):
-            rv = self.evaluate_model(truncate_at_sample=self.n_test_traces, return_full_trace=True)
-            for key, val in rv.items():
-                if not key in test_final_rv.keys():
-                    test_final_rv[key] = []
-                test_final_rv[key].append(val)
+        test_multitrace_rv = [self.evaluate_model(truncate_at_sample=self.n_test_traces) for _ in range(self.final_evaluation_repetitions)]
+        test_multitrace_rv = {key: np.mean([val[key] for val in test_multitrace_rv]) for key in test_multitrace_rv[0].keys()}
         if report_to_wandb:
             wandb.run.summary.update({'best_epoch': epoch})
             wandb.run.summary.update({'best_train_'+k: v for k, v in train_final_rv.items()})

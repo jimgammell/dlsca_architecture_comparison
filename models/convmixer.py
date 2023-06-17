@@ -37,7 +37,9 @@ class ConvMixer(nn.Module):
                 self.model = nn.Sequential(OrderedDict([
                     ('conv', nn.Conv1d(
                         in_channels=hidden_channels, out_channels=hidden_channels, groups=hidden_channels,
-                        kernel_size=spatial_kernel_size, stride=1, bias=True, padding=spatial_kernel_size//2
+                        kernel_size=int(np.ceil(input_shape[1]/patch_length)) if spatial_kernel_size=='mlp' else spatial_kernel_size,
+                        padding=0 if spatial_kernel_size=='mlp' else spatial_kernel_size//2,
+                        bias=True, stride=1
                     )),
                     ('act', activation_constructor()),
                     ('norm', norm_constructor(hidden_channels))
@@ -47,7 +49,7 @@ class ConvMixer(nn.Module):
             def forward(self, x):
                 out = self.model(x)
                 if self.skip_conn:
-                    out = (out + x) / np.sqrt(2)
+                    out = out + x
                 return out
         
         class ChannelMixer(nn.Module):
@@ -66,7 +68,7 @@ class ConvMixer(nn.Module):
             def forward(self, x):
                 out = self.model(x)
                 if self.skip_conn:
-                    out = (out + x) / np.sqrt(2)
+                    out = out + x
                 return out
         
         self.patch_embedding = nn.Sequential(OrderedDict([

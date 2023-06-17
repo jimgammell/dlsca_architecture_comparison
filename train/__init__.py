@@ -51,7 +51,7 @@ def get_acc(logits, labels):
         if not isinstance(labels, torch.Tensor):
             labels = torch.tensor(labels)
         predictions = nn.functional.softmax(logits, dim=-1)
-        acc = (predictions*labels).sum(dim=-1).mean()
+        acc = nn.functional.cosine_similarity(predictions, labels, dim=-1).mean()
         acc = value(acc)
     else:
         if isinstance(logits, torch.Tensor):
@@ -102,8 +102,6 @@ def run_epoch(dataloader, step_fn, *step_args, truncate_steps=None, average_batc
     if truncate_steps is not None:
         assert 0 <= truncate_steps <= len(dataloader)
     for bidx, batch in enumerate(dataloader):
-        if (bidx % len(dataloader)//10) == 0:
-            print(bidx, 'batches complete')
         step_rv = step_fn(batch, *step_args, **step_kwargs)
         rv.update(step_rv)
         if truncate_steps is not None and bidx >= truncate_steps:
